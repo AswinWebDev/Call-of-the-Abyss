@@ -1,39 +1,32 @@
 /**
  * wavedash.js — Leaderboard backend (Wavedash SDK).
  *
- * Drop-in replacement for firebase.js. Exports the same three public
- * functions (submitScore, fetchTopScores, fetchPlayerRank) so the rest
- * of the codebase barely changes.
+ * Uses static import of @wvdsh/sdk-js which Wavedash bundles correctly.
+ * On local dev (no wavedash dev / no Wavedash runtime), init() throws and
+ * we catch it so the game still runs normally with empty leaderboards.
  *
  * Score encoding: wave * 10_000 + kills
  *   → natural DESC sort = highest wave first, kills as tiebreaker.
- *   → coins stored as metadata (display only, not ranked).
- *
- * The SDK is loaded lazily via dynamic import so local dev (plain
- * `npm run dev` without `wavedash dev`) doesn't crash at startup.
  */
 
-// ── SDK singleton ──────────────────────────────────────────────────
-let _sdk = null;        // set by initWavedash() if the platform is present
-let _isWavedash = false;
+import Wavedash from '@wvdsh/sdk-js';
 
-// ── Leaderboard bootstrap ──────────────────────────────────────────
+// ── SDK state ─────────────────────────────────────────────────────
+let _ready = false;   // true only after init() succeeded
+
+// ── Leaderboard bootstrap ─────────────────────────────────────────
 const LEADERBOARD_NAME = 'high-scores';
 let _lbIdPromise = null;
 
-/**
- * Resolve (or create) the leaderboard and cache its ID.
- * Every public function awaits this before doing anything.
- */
 function getLeaderboardId() {
-  if (!_sdk) return Promise.resolve(null);
+  if (!_ready) return Promise.resolve(null);
   if (!_lbIdPromise) {
     _lbIdPromise = (async () => {
       try {
-        const res = await _sdk.getOrCreateLeaderboard(
+        const res = await Wavedash.getOrCreateLeaderboard(
           LEADERBOARD_NAME,
-          _sdk.LeaderboardSortOrder.DESC,
-          _sdk.LeaderboardDisplayType.NUMERIC
+          Wavedash.LeaderboardSortOrder.DESC,
+          Wavedash.LeaderboardDisplayType.NUMERIC
         );
         if (res.success) return res.data.id;
         console.warn('[wavedash] getOrCreateLeaderboard failed:', res.message);
@@ -47,35 +40,47 @@ function getLeaderboardId() {
   return _lbIdPromise;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
-/** Encode wave + kills into a single sortable integer. */
+// ── Score helpers ─────────────────────────────────────────────────
 function encodeScore(wave, kills) {
   return Math.max(0, Math.floor(wave || 0)) * 10_000
        + Math.max(0, Math.floor(kills || 0));
 }
 
-/** Decode back into { wave, kills }. */
 function decodeScore(score) {
   const s = Math.max(0, Math.floor(score || 0));
   return { wave: Math.floor(s / 10_000), kills: s % 10_000 };
 }
 
-// ── Public API (mirrors firebase.js signatures) ────────────────────
+// ── Public API ────────────────────────────────────────────────────
 
 /**
- * Submit a finished run to the leaderboard.
- * Returns the global rank on success, or null on failure.
+ * Initialise the Wavedash SDK. Call this as early as possible — it
+ * dismisses the Wavedash loading screen. Returns { username } on
+ * Wavedash, null on plain localhost.
  */
-export async function submitScore({ wave, kills, coins }) {
+export function initWavedash() {
+  try {
+    Wavedash.init({ debug: true });
+    _ready = true;
+    const username = Wavedash.getUsername ? Wavedash.getUsername() : null;
+    return username ? { username } : null;
+  } catch (e) {
+    // Not running inside Wavedash (plain `npm run dev`) — silent degrade
+    _ready = false;
+    return null;
+  }
+}
+
+/**
+ * Submit a run score. Returns globalRank on success, null on failure.
+ */
+export async function submitScore({ wave, kills }) {
   try {
     const lbId = await getLeaderboardId();
     if (!lbId) return null;
-
     const score = encodeScore(wave, kills);
-    const res = await _sdk.uploadLeaderboardScore(lbId, score, true);
-    if (res.success) {
-      return res.data.globalRank;
-    }
+    const res = await Wavedash.uploadLeaderboardScore(lbId, score, true);
+    if (res.success) return res.data.globalRank;
     console.warn('[wavedash] uploadLeaderboardScore failed:', res.message);
     return null;
   } catch (e) {
@@ -85,28 +90,17 @@ export async function submitScore({ wave, kills, coins }) {
 }
 
 /**
- * Fetch the top N scores.
- * Returns an array of { name, wave, kills, coins, globalRank } —
- * same shape the leaderboard renderer expects.
+ * Fetch top N scores. Returns [] on failure / local dev.
  */
 export async function fetchTopScores(n = 10) {
   try {
     const lbId = await getLeaderboardId();
     if (!lbId) return [];
-
-    const res = await _sdk.listLeaderboardEntries(lbId, 0, n, false);
+    const res = await Wavedash.listLeaderboardEntries(lbId, 0, n, false);
     if (!res.success) return [];
-
     return res.data.map(entry => {
       const { wave, kills } = decodeScore(entry.score);
-      return {
-        name: entry.username || 'Anonymous',
-        wave,
-        kills,
-        coins: 0,          // coins aren't in the composite score — display-only
-        globalRank: entry.globalRank,
-        userId: entry.userId
-      };
+      return { name: entry.username || 'Anonymous', wave, kills, coins: 0, globalRank: entry.globalRank };
     });
   } catch (e) {
     console.warn('[wavedash] fetchTopScores error:', e);
@@ -115,66 +109,22 @@ export async function fetchTopScores(n = 10) {
 }
 
 /**
- * Fetch the current player's best entry and rank.
- * Returns { entry: { name, wave, kills, coins }, rank } or null.
+ * Fetch the current player's rank. Returns { entry, rank } or null.
  */
 export async function fetchPlayerRank() {
   try {
     const lbId = await getLeaderboardId();
     if (!lbId) return null;
-
-    const res = await _sdk.getMyLeaderboardEntries(lbId);
+    const res = await Wavedash.getMyLeaderboardEntries(lbId);
     if (!res.success || !res.data || res.data.length === 0) return null;
-
-    const best = res.data[0]; // highest score entry
+    const best = res.data[0];
     const { wave, kills } = decodeScore(best.score);
     return {
-      entry: {
-        name: best.username || (_sdk.getUsername ? _sdk.getUsername() : 'You'),
-        wave,
-        kills,
-        coins: 0
-      },
+      entry: { name: best.username || 'You', wave, kills, coins: 0 },
       rank: best.globalRank
     };
   } catch (e) {
     console.warn('[wavedash] fetchPlayerRank error:', e);
-    return null;
-  }
-}
-
-/**
- * Initialise the Wavedash SDK.  Called once from main.js.
- * Returns { username } if a Wavedash user is available, or null for
- * local dev / non-Wavedash environments.
- *
- * The SDK package (@wvdsh/sdk-js) throws at import time when the
- * Wavedash host hasn't injected the runtime, so we load it via
- * dynamic import() inside a try/catch.
- */
-export function initWavedash() {
-  try {
-    // The Wavedash host injects a global `Wavedash` object before our
-    // code runs.  If it's missing, we're in local dev → bail out.
-    if (typeof window === 'undefined' || !window.Wavedash) {
-      console.info('[wavedash] Not running on Wavedash (local dev mode)');
-      return null;
-    }
-
-    _sdk = window.Wavedash;
-    _isWavedash = true;
-    _sdk.init({ debug: true });
-
-    const user = _sdk.getUser ? _sdk.getUser() : null;
-    if (user) {
-      const username = (_sdk.getUsername ? _sdk.getUsername() : null) || user.username || null;
-      return { username };
-    }
-    return null;
-  } catch (e) {
-    console.info('[wavedash] SDK init failed (local dev mode):', e.message);
-    _sdk = null;
-    _isWavedash = false;
     return null;
   }
 }

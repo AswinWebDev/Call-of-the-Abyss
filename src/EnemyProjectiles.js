@@ -23,7 +23,7 @@ export class EnemyProjectiles {
 
     // We will dynamically conform a high-res plane to the terrain
     const textureLoader = new THREE.TextureLoader();
-    const splashTex = textureLoader.load('/textures/toxic_splash.png');
+    const splashTex = textureLoader.load('./textures/toxic_splash.png');
 
     this._poisonMat = new THREE.ShaderMaterial({
       uniforms: {

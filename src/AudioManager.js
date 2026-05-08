@@ -377,10 +377,10 @@ export class AudioManager {
 
   async _loadSounds() {
     const files = [
-      '/sounds/pistol.mp3',   // Tier 0
-      '/sounds/shotgun.mp3',  // Tier 1
-      '/sounds/smg.mp3',      // Tier 2
-      '/sounds/heavy.mp3',    // Tier 3
+      './sounds/pistol.mp3',   // Tier 0
+      './sounds/shotgun.mp3',  // Tier 1
+      './sounds/smg.mp3',      // Tier 2
+      './sounds/heavy.mp3',    // Tier 3
     ];
 
     for (let i = 0; i < files.length; i++) {
@@ -396,7 +396,7 @@ export class AudioManager {
 
     // Hit sound
     try {
-      const resp = await fetch('/sounds/hit.mp3');
+      const resp = await fetch('./sounds/hit.mp3');
       if (resp.ok) {
         const ab = await resp.arrayBuffer();
         this.hitBuffer = await this.ctx.decodeAudioData(ab);
@@ -408,7 +408,7 @@ export class AudioManager {
 
     // Reload sound
     try {
-      const resp = await fetch('/sounds/reload.wav');
+      const resp = await fetch('./sounds/reload.wav');
       if (resp.ok) {
         const ab = await resp.arrayBuffer();
         this.reloadBuffer = await this.ctx.decodeAudioData(ab);
@@ -420,12 +420,12 @@ export class AudioManager {
 
     // Load Realistic Enemy Sounds
     const enemyFiles = {
-      'turtleHitBuffer': '/sounds/turtle_hit.mp3',
-      'turtleAttackBuffer': '/sounds/turtle_attack.mp3',
-      'turtleDieBuffer': '/sounds/turtle_die.mp3',
-      'bossHitBuffer': '/sounds/boss_hit.mp3',
-      'bossAttackBuffer': '/sounds/boss_attack.mp3',
-      'bossDieBuffer': '/sounds/boss_die.mp3'
+      'turtleHitBuffer': './sounds/turtle_hit.mp3',
+      'turtleAttackBuffer': './sounds/turtle_attack.mp3',
+      'turtleDieBuffer': './sounds/turtle_die.mp3',
+      'bossHitBuffer': './sounds/boss_hit.mp3',
+      'bossAttackBuffer': './sounds/boss_attack.mp3',
+      'bossDieBuffer': './sounds/boss_die.mp3'
     };
 
     for (const [key, path] of Object.entries(enemyFiles)) {
@@ -653,7 +653,7 @@ export class AudioManager {
    * Generic loader for a Cthulhu cinematic SFX (rise/death/etc.).
    * Idempotent — safe to call multiple times. Each entry is keyed by `key`
    * (used for buffer field, loading flag, pending flag) and points at the
-   * audio file at `/models/dialogues/${file}`.
+   * audio file at `./models/dialogues/${file}`.
    */
   _preloadCthuluCinematic(key, file) {
     if (!this.ctx) return;
@@ -663,7 +663,7 @@ export class AudioManager {
     if (this[bufKey] || this[loadKey]) return;
     this[loadKey] = true;
 
-    fetch(`/models/dialogues/${file}`)
+    fetch(`./models/dialogues/${file}`)
       .then(r => r.arrayBuffer())
       .then(ab => this.ctx.decodeAudioData(ab))
       .then(decoded => {
@@ -998,7 +998,7 @@ export class AudioManager {
     if (!this.ctx) return;
     if (this.waveDrumsBuffer || this._waveDrumsLoading) return;
     this._waveDrumsLoading = true;
-    fetch('/sounds/alec_koff-epic-drums-tribal.ogg')
+    fetch('./sounds/alec_koff-epic-drums-tribal.ogg')
       .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('HTTP ' + r.status))))
       .then(ab => this.ctx.decodeAudioData(ab))
       .then(buf => {

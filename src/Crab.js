@@ -219,12 +219,12 @@ export class Crab {
 
   _load() {
     const loader = new GLTFLoader();
-    loader.load('/models/sweet_crab_sketchfabweekly.glb',
+    loader.load('./models/sweet_crab_sketchfabweekly.glb',
       (gltf) => this._onModelLoaded(gltf),
       undefined,
       (err) => {
         console.warn('Sweet crab failed, falling back to animated_crab.glb', err);
-        loader.load('/models/animated_crab.glb',
+        loader.load('./models/animated_crab.glb',
           (gltf) => this._onModelLoaded(gltf),
           undefined,
           (err2) => console.error('Failed to load any crab model', err2)

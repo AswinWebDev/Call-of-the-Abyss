@@ -9,30 +9,30 @@ export class DialogueManager {
     
     // Mapping exact texts to their audio file names
     this.dialogueFiles = {
-      "I am the terror of the deep! Your water gun is nothing!": "I am the terror of the deep! Your water gun is nothing!.mp3",
-      "Need more water... hold on.": "Need more water... hold on.mp3",
-      "Oh crab... here comes the big one.": "Oh crab... here comes the big one.mp3",
-      "Snap him in half!": "Snap him in half!.mp3",
-      "The beach belongs to us!": "The beach belongs to us!.mp3",
-      "The tide washes all away... starting with you!": "The tide washes all away... starting with you!.mp3",
-      "Time to clean up this beach.": "Time to clean up this beach.mp3",
-      "Your pathetic squirt gun cannot pierce my armor!": "Your pathetic squirt gun cannot pierce my armor!.mp3",
+      "I am the terror of the deep! Your water gun is nothing!": "terror-of-the-deep.mp3",
+      "Need more water... hold on.": "need-more-water.mp3",
+      "Oh crab... here comes the big one.": "oh-crab-big-one.mp3",
+      "Snap him in half!": "snap-him-in-half.mp3",
+      "The beach belongs to us!": "beach-belongs-to-us.mp3",
+      "The tide washes all away... starting with you!": "tide-washes-all-away.mp3",
+      "Time to clean up this beach.": "time-to-clean-up.mp3",
+      "Your pathetic squirt gun cannot pierce my armor!": "pathetic-squirt-gun.mp3",
       "You're gonna feel my wrath, shell-face!": "yourgonnafeelmywrathshellface_turtle.mp3",
       // New Burrow Events (Crab)
-      "Oh no! The burrow is destroyed!": "Oh no! The burrow is destroyed!.mp3",
-      "Rebuilding the burrow... hold them off!": "Rebuilding the burrow... hold them off!.mp3",
-      "The burrow is back online!": "The burrow is back online!.mp3",
-      "Little one is on the way!": "Little one is on the way!.mp3",
-      "Go get 'em, little buddy!": "Go get 'em, little buddy!.mp3",
+      "Oh no! The burrow is destroyed!": "burrow-destroyed.mp3",
+      "Rebuilding the burrow... hold them off!": "rebuilding-burrow.mp3",
+      "The burrow is back online!": "burrow-back-online.mp3",
+      "Little one is on the way!": "little-one-on-the-way.mp3",
+      "Go get 'em, little buddy!": "go-get-em-little-buddy.mp3",
       // Octopus Dialogues
-      "You hear it too… don’t you The call of the abyss… it calls for you.": "You hear it too… don’t you The call of the abyss… it calls for you.mp3",
-      "The call of Cthulhu echoes.": "The call of Cthulhu echoes.mp3",
-      "The abyss is awake.... Wakey wakey!!!": "The abyss is awake.... Wakey wakey!!!.mp3",
-      "Swallow my darkness!": "Swallow my darkness!.mp3",
-      "Ahh, The abyss… remembers you.": "Ahh, The abyss… remembers you.mp3",
+      "You hear it too… don't you The call of the abyss… it calls for you.": "hear-it-too-call-of-abyss.mp3",
+      "The call of Cthulhu echoes.": "call-of-cthulhu-echoes.mp3",
+      "The abyss is awake.... Wakey wakey!!!": "abyss-is-awake.mp3",
+      "Swallow my darkness!": "swallow-my-darkness.mp3",
+      "Ahh, The abyss… remembers you.": "abyss-remembers-you.mp3",
       // Death dialogue lines (played when crab dies, with echo)
-      "You belong to the deep now… Cthulhu waits below.": "You belong to the deep now… Cthulhu waits below.mp3",
-      "Sink without fear… the deep has already claimed you.": "Sink without fear… the deep has already claimed you.mp3"
+      "You belong to the deep now… Cthulhu waits below.": "belong-to-the-deep.mp3",
+      "Sink without fear… the deep has already claimed you.": "sink-without-fear.mp3"
     };
 
     this.audioBuffers = {};
@@ -46,7 +46,7 @@ export class DialogueManager {
 
   async _preloadAudio() {
     Object.entries(this.dialogueFiles).forEach(([text, filename]) => {
-      fetch(`/models/dialogues/${filename}`)
+      fetch(`./models/dialogues/${filename}`)
         .then(response => response.arrayBuffer())
         .then(buffer => {
           // If the AudioManager has a context, decode it immediately for zero-latency playback

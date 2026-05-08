@@ -319,7 +319,7 @@ export class Beach {
     const loader = new GLTFLoader(loadingManager);
 
     // Load Protagonist (Crab)
-    loader.load('/models/animated_crab.glb', (gltf) => {
+    loader.load('./models/animated_crab.glb', (gltf) => {
       this.components.crab = gltf.scene;
 
       // Scale and position the crab in the center of the beach
@@ -349,7 +349,7 @@ export class Beach {
     });
 
     // Load Environment (Coconut Trees)
-    loader.load('/models/coconut_tree.glb', (gltf) => {
+    loader.load('./models/coconut_tree.glb', (gltf) => {
       // Spawn a huge jungle canopy on the left cliff structure using multiple trees
       // Significantly reduced tree count to avoid crowded chunks of shadows!
       for (let i = 0; i < 12; i++) {

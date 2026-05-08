@@ -397,7 +397,7 @@ export class World {
 
   _loadRocks() {
     // Load simple_rock_iv.glb — beach rocks only
-    this.loader.load('/models/simple_rock_iv.glb', (gltf) => {
+    this.loader.load('./models/simple_rock_iv.glb', (gltf) => {
       this._placeRocks(gltf.scene, 'simple_rock', 20);
       console.log('✓ Rocks loaded');
     });
@@ -662,7 +662,7 @@ export class World {
   // ─── TREES ──────────────────────────────────────────────────────
 
   _loadTrees() {
-    this.loader.load('/models/coconut_tree.glb', (gltf) => {
+    this.loader.load('./models/coconut_tree.glb', (gltf) => {
       for (let i = 0; i < 15; i++) { // Fewer trees to avoid blocking movement
         const tree = gltf.scene.clone();
         const x = -20 - Math.random() * 100;
@@ -740,7 +740,7 @@ export class World {
   }
 
   _loadFerns() {
-    this.loader.load('/models/fern_grass_02.glb', (gltf) => {
+    this.loader.load('./models/fern_grass_02.glb', (gltf) => {
       // Auto-scale to ensure massive visibility regardless of asset authoring scale
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const size = box.getSize(new THREE.Vector3());

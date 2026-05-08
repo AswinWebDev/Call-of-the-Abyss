@@ -268,7 +268,7 @@ export class EnemyManager {
   }
 
   _loadModel() {
-    this.loader.load('/models/stylized_turtle.glb',
+    this.loader.load('./models/stylized_turtle.glb',
       (gltf) => {
         this.turtleModel = gltf.scene;
 
@@ -298,7 +298,7 @@ export class EnemyManager {
         };
 
         // Load Octopus
-        this.loader.load('/models/dave_the_octopus_rig_animation.glb', (octoGltf) => {
+        this.loader.load('./models/dave_the_octopus_rig_animation.glb', (octoGltf) => {
           this.octopusModel = octoGltf.scene;
           const oBox = new THREE.Box3().setFromObject(this.octopusModel);
           const oSize = oBox.getSize(new THREE.Vector3());
@@ -328,7 +328,7 @@ export class EnemyManager {
     // assets the player only needs after they've been in the world for a bit.
     if (this.audio && this.audio.loadWaveDrums) this.audio.loadWaveDrums();
 
-    this.loader.load('/models/zombie_monster_slasher_necromorph.glb', (gltf) => {
+    this.loader.load('./models/zombie_monster_slasher_necromorph.glb', (gltf) => {
       this.bossModel = gltf.scene;
 
       // Auto-scale
@@ -369,7 +369,7 @@ export class EnemyManager {
       this.audio.preloadCthuluDies();
     }
 
-    this.loader.load('/models/boss_octopus.glb', (gltf) => {
+    this.loader.load('./models/boss_octopus.glb', (gltf) => {
       this.cthulhuModel = gltf.scene;
       // Normalize size — we'll scale further per spawn for the mega effect
       const box = new THREE.Box3().setFromObject(this.cthulhuModel);

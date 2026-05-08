@@ -1,5 +1,6 @@
-// Silence all console output (submission build).
-['log', 'warn', 'info', 'debug', 'error', 'trace'].forEach(k => { console[k] = () => {}; });
+// Console output is left enabled — Wavedash SDK requires it for
+// host-frame communication. Remove this comment if you want to
+// re-enable silencing for non-Wavedash builds.
 
 /**
  * main.js — Call Of The Abyss: A Crab's Last Stand
@@ -63,6 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas');
   if (!canvas) { console.error('Canvas not found'); return; }
 
+  // ─── WAVEDASH SDK INIT (must be first — dismisses the loading screen) ─
+  // initWavedash() calls Wavedash.init() which signals to the Wavedash
+  // platform that the game has loaded. If not on Wavedash it no-ops.
+  const wavedashUser = initWavedash();
+
   // Re-apply touch-mode class once <body> is definitely available
   if (HAS_TOUCH && document.body) document.body.classList.add('touch-mode');
 
@@ -107,8 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Pick one of the two death lines at random
     const deathLines = [
-      'You belong to the deep now… Cthulhu waits below.mp3',
-      'Sink without fear… the deep has already claimed you.mp3'
+      'belong-to-the-deep.mp3',
+      'sink-without-fear.mp3'
     ];
     const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
 
@@ -230,12 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
     nameOverlay.classList.add('hidden');
     mainMenu.classList.remove('hidden');
   };
-
-  // ─── WAVEDASH SDK INIT ────────────────────────────────────
-  // If running on Wavedash, the SDK provides player identity and we
-  // skip the name-entry overlay. Otherwise fall back to the custom
-  // name input for local dev.
-  const wavedashUser = initWavedash();
 
   // If we already have a name from this session, skip the overlay
   let cachedName = '';

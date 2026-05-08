@@ -87,7 +87,7 @@ export class BurrowManager {
 
   _buildBurrow() {
     // Load rocks to create a protective circle
-    this.loader.load('/models/simple_rock_iv.glb', (gltf) => {
+    this.loader.load('./models/simple_rock_iv.glb', (gltf) => {
       const rockModel = gltf.scene;
       
       const rockCount = 20;
@@ -166,7 +166,7 @@ export class BurrowManager {
   }
 
   _loadMinionModel() {
-    this.loader.load('/models/animated_crab.glb', (gltf) => {
+    this.loader.load('./models/animated_crab.glb', (gltf) => {
       this.minionModel = gltf.scene;
       this.minionAnimClips = gltf.animations;
       
