@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Shell Shock — Crab Wave Shooter</title>
+  <meta name="description" content="Shell Shock: A production-quality crab wave shooter game. Defend the beach as a crab armed with a water gun against waves of invading turtles.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      overflow: hidden;
+      background: #0a0a12;
+      color: #fff;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      cursor: crosshair;
+    }
+    #game-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 1;
+    }
+    #ui-layer {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 10;
+      pointer-events: none;
+      display: none; /* Hidden until game starts */
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .hud-element {
+      background: rgba(0, 0, 0, 0.35);
+      padding: 12px 20px;
+      border-radius: 12px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    #branding h1 {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #FF6B35, #FFD700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    #branding p {
+      font-size: 11px;
+      opacity: 0.5;
+      margin-top: 2px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .ammo-display {
+      text-align: right;
+    }
+    .ammo-display .label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .ammo-bar {
+      width: 160px;
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .ammo-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #00BFFF, #00FF88);
+      border-radius: 4px;
+      transition: width 0.2s ease-out;
+    }
+    .ammo-text {
+      font-size: 28px;
+      font-weight: 900;
+      color: #00DDFF;
+      text-shadow: 0 0 12px rgba(0, 221, 255, 0.4);
+    }
+    .hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .controls {
+      font-size: 13px;
+      opacity: 0.7;
+      line-height: 1.8;
+    }
+    kbd {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-family: 'Outfit', monospace;
+      font-weight: 600;
+      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.1);
+      margin: 0 2px;
+    }
+    #fps-counter {
+      font-size: 12px;
+      opacity: 0.35;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    /* Crosshair */
+    .crosshair {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 15;
+      pointer-events: none;
+      width: 24px; height: 24px;
+    }
+    .crosshair::before, .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.6);
+      border-radius: 1px;
+    }
+    .crosshair::before {
+      width: 2px; height: 24px;
+      left: 50%; top: 0;
+      transform: translateX(-50%);
+    }
+    .crosshair::after {
+      width: 24px; height: 2px;
+      top: 50%; left: 0;
+      transform: translateY(-50%);
+    }
+    .crosshair-dot {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: rgba(255, 107, 53, 0.9);
+      box-shadow: 0 0 6px rgba(255, 107, 53, 0.6);
+    }
+    /* Menu System */
+    .menu-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 18, 0.85);
+      backdrop-filter: blur(10px);
+      transition: opacity 0.5s ease;
+      pointer-events: all;
+    }
+    .menu-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .menu-content {
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 60px;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      max-width: 600px;
+      width: 90%;
+    }
+    .game-title {
+      font-size: 64px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      background: linear-gradient(135deg, #FF6B35, #FFD700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .game-subtitle {
+      font-size: 18px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      opacity: 0.6;
+      margin-bottom: 48px;
+    }
+    .menu-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+    }
+    .menu-btn {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      padding: 16px 40px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      width: 100%;
+      max-width: 300px;
+    }
+    .menu-btn.primary {
+      background: linear-gradient(90deg, #FF6B35, #FFD700);
+      color: #000;
+      box-shadow: 0 8px 24px rgba(255, 107, 53, 0.4);
+    }
+    .menu-btn.primary:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(255, 107, 53, 0.6);
+      background: linear-gradient(90deg, #FF8255, #FFDF33);
+    }
+    .menu-btn.secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .menu-btn.secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+    /* How to play specific */
+    .instructions-panel h2 {
+      font-size: 32px;
+      margin-bottom: 32px;
+      letter-spacing: 2px;
+    }
+    .instructions-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-bottom: 32px;
+      text-align: left;
+    }
+    .inst-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(0,0,0,0.3);
+      padding: 16px;
+      border-radius: 12px;
+    }
+    .inst-icon {
+      font-size: 32px;
+    }
+    .inst-text h3 {
+      font-size: 16px;
+      color: #FFD700;
+      margin-bottom: 4px;
+    }
+    .inst-text p {
+      font-size: 14px;
+      opacity: 0.8;
+      line-height: 1.4;
+    }
+    .controls-list {
+      margin-bottom: 32px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .controls-list p { margin-bottom: 12px; }
+    /* Combat HUD */
+    .health-display { text-align: left; }
+    .health-display .label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.6; }
+    .health-bar { width: 160px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+    .health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #FF4444, #FF8844, #44FF44); border-radius: 4px; transition: width 0.3s ease-out; }
+    .health-text { font-size: 28px; font-weight: 900; color: #44FF88; text-shadow: 0 0 12px rgba(68, 255, 136, 0.4); }
+    .combat-hud { display: flex; gap: 16px; align-items: center; }
+    .stat-box { text-align: center; min-width: 60px; }
+    .stat-box .stat-label { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.5; }
+    .stat-box .stat-value { font-size: 20px; font-weight: 800; color: #FFD700; }
+    .gun-tier-display { font-size: 11px; text-align: center; margin-top: 4px; }
+    #gun-tier { color: #00ddff; font-weight: 700; font-size: 12px; }
+    .xp-bar { width: 120px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 4px; }
+    .xp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #FFD700, #FF6B35); border-radius: 2px; transition: width 0.3s; }
+    #damage-overlay { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.6) 100%); z-index: 14; pointer-events: none; opacity: 0; transition: opacity 0.15s ease-out; }
+    @keyframes popin {
+      0% { opacity: 0; transform: scale(0.5) translateY(-20px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes popout {
+      0% { opacity: 1; transform: scale(1) translateY(0); }
+      100% { opacity: 0; transform: scale(0.8) translateY(-10px); }
+    }
+    /* Comic Speech Bubbles */
+    #dialogue-layer {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 5;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    /* Small Comic Cloud Bubble */
+    .speech-bubble {
+      position: absolute;
+      background: #fff;
+      color: #000;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 8px 12px;
+      border: 2px solid #000;
+      border-radius: 16px;
+      box-shadow: 3px 3px 0px rgba(0,0,0,0.8);
+      width: max-content;
+      max-width: 140px;
+      text-align: center;
+      transform: translate(-50%, -100%);
+      transform-origin: bottom center;
+      animation: bubblePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transition: top 0.1s linear, left 0.1s linear;
+      will-change: transform, top, left;
+      z-index: 100;
+    }
+    
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -8px; left: 50%;
+      transform: translateX(-50%);
+      border-width: 8px 8px 0;
+      border-style: solid;
+      border-color: #000 transparent transparent transparent;
+    }
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: -5px; left: 50%;
+      transform: translateX(-50%);
+      border-width: 6px 6px 0;
+      border-style: solid;
+      border-color: #fff transparent transparent transparent;
+      z-index: 1;
+    }
+
+    /* Monsters use the exact same styling as hero */
+    .speech-bubble.monster {
+      /* Identical to hero */
+    }
+
+    @keyframes bubblePop {
+      0% { opacity: 0; transform: translate(-50%, -80%) scale(0.5); }
+      100% { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+    }
+
+    /* --- Upgrade 3.0: Shop Modal --- */
+    .shop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 18, 0.92);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      pointer-events: all;
+      animation: upgradeOverlayIn 0.4s ease-out;
+    }
+    @keyframes upgradeOverlayIn {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes upgradeOverlayOut {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .shop-panel {
+      text-align: center;
+      max-width: 1000px;
+      width: 95%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .shop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+    }
+    .shop-title {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg, #FF6B35, #FFD700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-transform: uppercase;
+    }
+    .shop-coins {
+      font-size: 24px;
+      font-weight: 800;
+      color: #FFD700;
+      text-shadow: 0 0 10px rgba(255,215,0,0.5);
+    }
+    .shop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      justify-items: center;
+      padding: 10px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    /* Custom Scrollbar for shop grid */
+    .shop-grid::-webkit-scrollbar {
+      width: 8px;
+    }
+    .shop-grid::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+    .shop-grid::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    .shop-grid::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+    .shop-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 16px;
+      padding: 24px 16px;
+      width: 100%;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      animation: cardSlideIn 0.4s ease-out both;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 260px;
+    }
+    @keyframes cardSlideIn {
+      0% { opacity: 0; transform: translateY(30px) scale(0.9); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .shop-card:not(.disabled):hover {
+      background: rgba(255,255,255,0.10);
+      border-color: var(--card-color, #FFD700);
+      transform: translateY(-8px);
+      box-shadow: 0 12px 40px rgba(255,215,0,0.1);
+    }
+    .shop-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: grayscale(0.8);
+    }
+    .shop-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+    .shop-card-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .shop-level {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--card-color, #44ddff);
+      margin-bottom: 8px;
+    }
+    .shop-desc {
+      font-size: 13px;
+      opacity: 0.7;
+      line-height: 1.5;
+      margin-bottom: 16px;
+      flex-grow: 1;
+    }
+    .shop-cost {
+      font-size: 18px;
+      font-weight: 900;
+      color: #FFD700;
+      background: rgba(0,0,0,0.3);
+      padding: 8px 16px;
+      border-radius: 8px;
+      width: 100%;
+    }
+    .shop-done-btn {
+      align-self: center;
+      padding: 16px 48px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: #44ddff;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .shop-done-btn:hover {
+      background: #fff;
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(68, 221, 255, 0.5);
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-CCrOW4w8.js"></script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Crosshair -->
+  <div class="crosshair"><div class="crosshair-dot"></div></div>
+
+  <!-- Main Menu -->
+  <div id="main-menu" class="menu-overlay">
+    <div class="menu-content">
+      <h1 class="game-title">SHELL SHOCK</h1>
+      <p class="game-subtitle">Crab Wave Shooter</p>
+      
+      <div class="menu-buttons">
+        <button id="btn-play" class="menu-btn primary">PLAY GAME</button>
+        <button id="btn-how-to-play" class="menu-btn secondary">HOW TO PLAY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to Play Screen -->
+  <div id="how-to-play" class="menu-overlay hidden">
+    <div class="menu-content instructions-panel">
+      <h2>HOW TO PLAY</h2>
+      <div class="instructions-grid">
+        <div class="inst-item">
+          <div class="inst-icon">🌊</div>
+          <div class="inst-text">
+            <h3>Reload in Water</h3>
+            <p>Your water gun uses ocean water. Stand in the sea to reload your ammo!</p>
+          </div>
+        </div>
+        <div class="inst-item">
+          <div class="inst-icon">✨</div>
+          <div class="inst-text">
+            <h3>Collect Coins</h3>
+            <p>Defeated turtles drop coins. Collect them to upgrade your weapon between waves.</p>
+          </div>
+        </div>
+        <div class="inst-item">
+          <div class="inst-icon">🏰</div>
+          <div class="inst-text">
+            <h3>Defend the Burrow</h3>
+            <p>Deposit coins at your Burrow to spawn Minion Crabs to help you fight.</p>
+          </div>
+        </div>
+      </div>
+      <div class="controls-list">
+        <p><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> Move &nbsp;&nbsp; <kbd>Shift</kbd> Sprint</p>
+        <p><kbd>Mouse</kbd> Look &nbsp;&nbsp; <kbd>Click</kbd> Shoot</p>
+      </div>
+      <button id="btn-back" class="menu-btn secondary">BACK TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Damage flash overlay -->
+  <div id="damage-overlay"></div>
+
+  <!-- Notification Center -->
+  <div id="notification-center" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); z-index:100; pointer-events:none; display:flex; flex-direction:column; gap:10px; align-items:center;"></div>
+
+  <!-- Dialogue Layer -->
+  <div id="dialogue-layer"></div>
+
+  <!-- HUD Overlay -->
+  <div id="ui-layer">
+    <div class="hud-top">
+      <div id="branding" class="hud-element">
+        <h1>Shell Shock</h1>
+        <p>Crab Wave Shooter</p>
+      </div>
+
+      <div class="combat-hud">
+        <div class="hud-element stat-box">
+          <div class="stat-label">Wave</div>
+          <div class="stat-value" id="wave-number">—</div>
+        </div>
+        <div class="hud-element stat-box">
+          <div class="stat-label">Kills</div>
+          <div class="stat-value" id="kill-count">0</div>
+        </div>
+        <div class="hud-element stat-box" id="burrow-hud" style="display:none; border-color:#FFD700;">
+          <div class="stat-label" style="color:#FFD700;">Burrow Lvl <span id="burrow-level">1</span></div>
+          <div style="font-size:12px; font-weight:800; color:#FF4444; margin-top:2px;" id="burrow-health">100/100 HP</div>
+          <div style="font-size:11px; opacity:0.8; margin-top:2px;">Minions: <span id="burrow-minions">0/2</span></div>
+          <div id="burrow-cost" style="font-size:11px; font-weight:bold; color:#FFD700; margin-top:4px;">Cost: 5 Coins</div>
+        </div>
+      </div>
+
+      <div class="hud-element ammo-display">
+        <div class="label">Water Ammo</div>
+        <div class="ammo-text" id="ammo-count">100</div>
+        <div class="ammo-bar">
+          <div class="ammo-fill" id="ammo-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-bottom">
+      <div class="hud-element controls">
+        <div><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> Move</div>
+        <div><kbd>Shift</kbd> Sprint</div>
+        <div><kbd>Mouse</kbd> Look Around</div>
+        <div><kbd>Click</kbd> Shoot</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+        <div class="hud-element health-display">
+          <div class="label">Health</div>
+          <div class="health-text" id="health-count">100</div>
+          <div class="health-bar">
+            <div class="health-fill" id="health-fill"></div>
+          </div>
+        </div>
+        <div class="hud-element">
+          <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Coins: <span id="coin-count" style="color:#FFD700;">0</span></div>
+          <div class="gun-tier-display">
+            <div style="font-size:9px; opacity:0.5; letter-spacing:1px; text-transform:uppercase;">Weapon</div>
+            <div id="gun-tier">Water Pistol Lv.1</div>
+          </div>
+        </div>
+        <div class="hud-element" style="margin-top:2px; border-color:#EEDD88; background:rgba(238,221,136,0.1);">
+          <div style="font-size:11px; font-weight:bold; color:#EEDD88; margin-bottom:2px; text-transform:uppercase;">Sand Burst</div>
+          <div style="font-size:9px; opacity:0.7; letter-spacing:1px;">Right Click</div>
+          <div class="ammo-bar" style="width: 120px; height: 6px; margin-top: 6px; background: rgba(238,221,136,0.1);">
+            <div class="ammo-fill" id="sandburst-fill" style="background: #EEDD88; transition: width 0.1s linear;"></div>
+          </div>
+        </div>
+        <div class="hud-element" id="fps-counter">-- FPS</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Removed old pointerlockchange logic as it's handled in main.js now
+
+    window.showNotification = function(title, message) {
+      const container = document.getElementById('notification-center');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.style.background = 'rgba(0,0,0,0.7)';
+      el.style.border = '2px solid #FFD700';
+      el.style.borderRadius = '8px';
+      el.style.padding = '12px 24px';
+      el.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.5)';
+      el.style.backdropFilter = 'blur(8px)';
+      el.style.textAlign = 'center';
+      el.style.animation = 'popin 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+      el.innerHTML = `<div style="font-size:24px; font-weight:900; color:#FFD700; letter-spacing:2px; text-transform:uppercase;">${title}</div>
+                      ${message ? `<div style="font-size:14px; opacity:0.8; margin-top:4px;">${message}</div>` : ''}`;
+      container.appendChild(el);
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        el.style.animation = 'popout 0.3s forwards';
+        setTimeout(() => el.remove(), 300);
+      }, 3000);
+    };
+  </script>
+  <script async src="https://vibejam.cc/2026/widget.js"></script>
+</body>
+</html>
