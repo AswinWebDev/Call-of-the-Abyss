@@ -6,7 +6,6 @@
  * Bootstrap — wires Engine, World, Crab, Camera, Input, Audio, Weapons, Enemies
  */
 import * as THREE from 'three';
-window.THREE = THREE; // sample.js (vibej.am portals) reads from global THREE
 
 import { Engine } from './Engine.js';
 import { InputManager } from './InputManager.js';
@@ -22,7 +21,7 @@ import { DialogueManager } from './DialogueManager.js';
 import { EnemyProjectiles } from './EnemyProjectiles.js';
 import { UpgradeSystem } from './UpgradeSystem.js';
 import { submitScore, fetchTopScores, fetchPlayerRank } from './firebase.js';
-import { VibeJamPortal } from './VibeJamPortal.js';
+
 import { TouchControls } from './TouchControls.js';
 
 // Touch / mobile detection. Three signals so DevTools "responsive" mode and
@@ -222,7 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const clean = String(name || '').trim().slice(0, 20);
     if (!clean) return false;
     window.playerName = clean;
-    window.selfUsername = clean; // read by vibej.am portal sample.js on exit
     try { sessionStorage.setItem(NAME_STORAGE_KEY, clean); } catch (e) {}
     if (nameBadge) nameBadge.textContent = `Playing as ${clean}`;
     return true;
@@ -237,27 +235,11 @@ document.addEventListener('DOMContentLoaded', () => {
     mainMenu.classList.remove('hidden');
   };
 
-  // ─── ARRIVED VIA VIBE JAM PORTAL? ─────────────────────────
-  // Spec: "no start screens, no input screens" when ?portal=true.
-  // We hide the name/main-menu UI, take the username from the URL,
-  // and let the player explore. First click engages pointer lock.
-  const urlParams = new URLSearchParams(window.location.search);
-  const arrivedViaPortal = urlParams.get('portal') === 'true' || urlParams.get('portal') === '1';
-  let needsLockOnFirstClick = false;
-
   // If we already have a name from this session, skip the overlay
   let cachedName = '';
   try { cachedName = sessionStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) {}
 
-  if (arrivedViaPortal) {
-    const portalName = (urlParams.get('username') || cachedName || 'Visitor').slice(0, 20);
-    setPlayerName(portalName);
-    nameOverlay.classList.add('hidden');
-    mainMenu.classList.add('hidden');
-    uiLayer.style.display = 'flex';
-    gameState = 'PLAYING';
-    needsLockOnFirstClick = true;
-  } else if (cachedName) {
+  if (cachedName) {
     setPlayerName(cachedName);
     nameOverlay.classList.add('hidden');
     mainMenu.classList.remove('hidden');
@@ -673,20 +655,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let mouseHeld = false;
   let _wasTouchFiring = false; // edge-detect charger start/release on touch
   document.addEventListener('mousedown', (e) => {
-    // First click after arriving through a portal engages pointer lock
-    // and audio context — don't fire the weapon on this click. Skip on
-    // touch devices since pointer lock isn't supported there.
-    if (needsLockOnFirstClick && !document.pointerLockElement && e.button === 0) {
-      needsLockOnFirstClick = false;
-      audio.init();
-      audio.resume();
-      if (!HAS_TOUCH) {
-        try { canvas.requestPointerLock(); } catch (err) {}
-      } else {
-        startMobileSession();
-      }
-      return;
-    }
     if (gameState === 'PLAYING') {
       if (e.button === 0) {
         mouseHeld = true;
@@ -727,163 +695,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ─── VIBE JAM PORTALS (custom) ────────────────────────────
-  // Exit portal sits at the back-left of the beach (more forward than the
-  // very corner, so it doesn't get hidden by the cliff foliage). Start
-  // portal is built only if the player arrived via ?portal=true&ref=…
-  const buildExitOnEnter = () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set('portal', 'true');
-    params.set('ref', window.location.hostname + (window.location.port ? ':' + window.location.port : ''));
-    if (window.playerName) params.set('username', window.playerName);
-    if (typeof window.currentSpeed === 'number') params.set('speed', window.currentSpeed.toFixed(2));
-    window.location.href = 'https://vibej.am/portal/2026?' + params.toString();
-  };
-
-  // Return portal — sends the player back to the URL they came from
-  // (encoded in ?ref=). All other portal params (username, color, speed,
-  // etc.) are preserved so the destination knows who's arriving.
-  const buildStartOnEnter = () => {
-    const incomingParams = new URLSearchParams(window.location.search);
-    const refUrl = incomingParams.get('ref');
-    if (!refUrl) return;
-
-    // Normalise into a parseable URL — accept bare hostnames, partial
-    // protocols, full URLs (with paths AND existing query strings).
-    let raw = refUrl.trim();
-    if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
-
-    let target;
-    try {
-      target = new URL(raw);
-    } catch (e) {
-      // Ref unparseable — bail rather than crash the page
-      console.warn('[Return portal] bad ref URL:', refUrl, e);
-      return;
-    }
-
-    // Preserve forwarded params (username, color, speed, etc.) but drop
-    // ref itself so we don't bounce back-and-forth in a loop.
-    incomingParams.delete('ref');
-    for (const [k, v] of incomingParams.entries()) {
-      target.searchParams.set(k, v);
-    }
-    window.location.href = target.toString();
-  };
-
-  const exitPortalPos = new THREE.Vector3(28, 0, -170);
-  const exitPortal = new VibeJamPortal(engine.scene, {
-    position: exitPortalPos,
-    label: 'VIBE JAM PORTAL',
-    // No tint — preserve the GLB's natural orange fireball material.
-    // Floor fog stays purple to keep the original portal vibe.
-    fogColor: new THREE.Color(0.65, 0.30, 0.95),
-    world: world,
-    onEnter: buildExitOnEnter
-    // No autoLoad — fireball.glb is fetched only when the crab gets close.
-  });
-
-  // ── Big arrow-shaped wooden sign pointing at the portal ──────
-  const buildPortalSign = () => {
-    const signGroup = new THREE.Group();
-    // Just to the left (west) of the sphere — close so the arrow tip nearly touches
-    const signPos = new THREE.Vector3(2, 0, -170);
-    let groundY = 0;
-    if (world && world.getTerrainHeight) {
-      groundY = world.getTerrainHeight(signPos.x, signPos.z);
-    }
-    signGroup.position.set(signPos.x, groundY, signPos.z);
-
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b3e1f, roughness: 0.95, metalness: 0 });
-
-    // Arrow plank shape: rectangle body + triangle tip, centred on origin in
-    // local XY so the body sits centred on the post and the tip extends in +X
-    const W = 7.5;        // body half-width
-    const H = 4.2;        // body half-height (taller board)
-    const HEAD_H = 6.5;   // arrow-head half-height (flares wider than the body)
-    const TIP = 8.0;      // extra length for the arrow point — larger triangle
-    const arrow = new THREE.Shape();
-    arrow.moveTo(-W, -H);          // body bottom-left
-    arrow.lineTo( W, -H);          // body bottom-right
-    arrow.lineTo( W, -HEAD_H);     // step down to arrow-head bottom flange
-    arrow.lineTo( W + TIP, 0);     // sharp tip
-    arrow.lineTo( W, HEAD_H);      // step up to arrow-head top flange
-    arrow.lineTo( W, H);           // back to body top-right
-    arrow.lineTo(-W, H);           // body top-left
-    arrow.lineTo(-W, -H);          // close
-    const plankGeo = new THREE.ExtrudeGeometry(arrow, { depth: 0.35, bevelEnabled: false });
-    const plank = new THREE.Mesh(plankGeo, woodMat);
-    plank.position.y = 9;
-    plank.position.z = -0.175;
-    plank.castShadow = true;
-    signGroup.add(plank);
-
-    // Text painted on a flat plane glued to the FRONT face of the arrow
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 576; // matches body aspect 2W:2H = 15:8.4 ≈ 1.78
-    const ctx = c.getContext('2d');
-    // Wood background to blend with the plank
-    ctx.fillStyle = '#8b5a2b';
-    ctx.fillRect(0, 0, c.width, c.height);
-    for (let i = 0; i < 14; i++) {
-      ctx.fillStyle = `rgba(40, 20, 8, ${0.05 + Math.random() * 0.10})`;
-      ctx.fillRect(0, i * 28 + Math.random() * 14, c.width, 2 + Math.random() * 3);
-    }
-    // Heavy bordered text
-    ctx.fillStyle = '#1a0a05';
-    ctx.font = 'bold 120px Arial Black, Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Shortcut to', c.width / 2, c.height * 0.32);
-    ctx.fillText('the Abyss',   c.width / 2, c.height * 0.72);
-    const tex = new THREE.CanvasTexture(c);
-    tex.minFilter = THREE.LinearFilter;
-    const textMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
-    // Plane sized to fit inside the body (slightly inset from the rectangle)
-    const textPlane = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.95, H * 1.95), textMat);
-    textPlane.position.set(0, 9, 0.21); // flush against the front face of the plank
-    signGroup.add(textPlane);
-
-    // Wooden post — sits BEHIND the plank and stops at the plank's bottom
-    // edge so it never crosses the front face / cuts off the text.
-    // Plank front face is at z=+0.175, back face at z=-0.175.
-    // Plank bottom edge is at y = 9 - H = 4.8.
-    const POST_TOP = 9 - H;          // top of post = bottom of plank
-    const POST_HEIGHT = POST_TOP;    // post stands from ground (y=0) to that
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, POST_HEIGHT, 10), woodMat);
-    post.position.set(0, POST_HEIGHT / 2, -0.6); // pushed back behind the plank
-    post.castShadow = true;
-    signGroup.add(post);
-
-    // Orient: local +X (arrow tip direction) aims at the portal.
-    // After rotation.y = θ, local +X maps to world (cos θ, 0, -sin θ),
-    // so we set θ = atan2(-Vz, Vx) where V is the vector to the portal.
-    const dx = exitPortalPos.x - signPos.x;
-    const dz = exitPortalPos.z - signPos.z;
-    signGroup.rotation.y = Math.atan2(-dz, dx);
-
-    engine.scene.add(signGroup);
-  };
-  buildPortalSign();
-
-  let startPortal = null;
-  if (arrivedViaPortal) {
-    startPortal = new VibeJamPortal(engine.scene, {
-      // Co-located with the player spawn (0, 2.5, 40) — "spawn from portal"
-      // per the Vibe Jam spec. The player arrives standing on the doorway.
-      position: new THREE.Vector3(0, 0, 40),
-      label: 'RETURN',
-      // No tint — show the GLB's native look for now
-      fogColor: new THREE.Color(0.10, 0.10, 0.15),
-      world: world,
-      delay: 5000,            // 5s grace period before the trigger arms
-      autoLoad: true,         // arriving via portal → portal must be visible immediately
-      requireExitFirst: true, // 🔑 don't auto-pull a stationary player back —
-                              //    they must step OUT of the zone once before
-                              //    re-entry triggers the return.
-      onEnter: buildStartOnEnter
-    });
-  }
 
   // Register update callback
   // ─── BOSS STORM SYSTEM ───────────────────────────────────
@@ -1017,26 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Sync 3D audio listener with the camera for spatial dialogue
       audio.updateListener(engine.camera);
 
-      // Forward current speed (m/s) for the exit portal redirect
-      if (crab && crab.velocity) {
-        const v = crab.velocity;
-        window.currentSpeed = Math.sqrt(v.x * v.x + v.z * v.z);
-      }
-      // Animate + collide custom Vibe Jam portals
-      if (crab && crab.position) {
-        // Lazy-load the exit portal's GLB once the player gets near it
-        // (~140 unit pre-fetch radius gives the network time to finish
-        // before the player actually reaches the doorway).
-        if (!exitPortal.modelLoaded && !exitPortal._loadStarted) {
-          const dx = crab.position.x - exitPortal.basePos.x;
-          const dz = crab.position.z - exitPortal.basePos.z;
-          if (dx * dx + dz * dz < 140 * 140) {
-            exitPortal.loadModel();
-          }
-        }
-        exitPortal.update(dt, time, crab.position);
-        if (startPortal) startPortal.update(dt, time, crab.position);
-      }
+
 
       // Player
       crab.update(dt, time, gameState === 'PLAYING');

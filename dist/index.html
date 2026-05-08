@@ -675,12 +675,164 @@
       container.appendChild(el);
       
       // Remove after 3 seconds
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Crosshair -->
+  <div class="crosshair"><div class="crosshair-dot"></div></div>
+
+  <!-- Main Menu -->
+  <div id="main-menu" class="menu-overlay">
+    <div class="menu-content">
+      <h1 class="game-title">SHELL SHOCK</h1>
+      <p class="game-subtitle">Crab Wave Shooter</p>
+      
+      <div class="menu-buttons">
+        <button id="btn-play" class="menu-btn primary">PLAY GAME</button>
+        <button id="btn-how-to-play" class="menu-btn secondary">HOW TO PLAY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to Play Screen -->
+  <div id="how-to-play" class="menu-overlay hidden">
+    <div class="menu-content instructions-panel">
+      <h2>HOW TO PLAY</h2>
+      <div class="instructions-grid">
+        <div class="inst-item">
+          <div class="inst-icon">🌊</div>
+          <div class="inst-text">
+            <h3>Reload in Water</h3>
+            <p>Your water gun uses ocean water. Stand in the sea to reload your ammo!</p>
+          </div>
+        </div>
+        <div class="inst-item">
+          <div class="inst-icon">✨</div>
+          <div class="inst-text">
+            <h3>Collect Coins</h3>
+            <p>Defeated turtles drop coins. Collect them to upgrade your weapon between waves.</p>
+          </div>
+        </div>
+        <div class="inst-item">
+          <div class="inst-icon">🏰</div>
+          <div class="inst-text">
+            <h3>Defend the Burrow</h3>
+            <p>Deposit coins at your Burrow to spawn Minion Crabs to help you fight.</p>
+          </div>
+        </div>
+      </div>
+      <div class="controls-list">
+        <p><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> Move &nbsp;&nbsp; <kbd>Shift</kbd> Sprint</p>
+        <p><kbd>Mouse</kbd> Look &nbsp;&nbsp; <kbd>Click</kbd> Shoot</p>
+      </div>
+      <button id="btn-back" class="menu-btn secondary">BACK TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Damage flash overlay -->
+  <div id="damage-overlay"></div>
+
+  <!-- Notification Center -->
+  <div id="notification-center" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); z-index:100; pointer-events:none; display:flex; flex-direction:column; gap:10px; align-items:center;"></div>
+
+  <!-- Dialogue Layer -->
+  <div id="dialogue-layer"></div>
+
+  <!-- HUD Overlay -->
+  <div id="ui-layer">
+    <div class="hud-top">
+      <div id="branding" class="hud-element">
+        <h1>Shell Shock</h1>
+        <p>Crab Wave Shooter</p>
+      </div>
+
+      <div class="combat-hud">
+        <div class="hud-element stat-box">
+          <div class="stat-label">Wave</div>
+          <div class="stat-value" id="wave-number">—</div>
+        </div>
+        <div class="hud-element stat-box">
+          <div class="stat-label">Kills</div>
+          <div class="stat-value" id="kill-count">0</div>
+        </div>
+        <div class="hud-element stat-box" id="burrow-hud" style="display:none; border-color:#FFD700;">
+          <div class="stat-label" style="color:#FFD700;">Burrow Lvl <span id="burrow-level">1</span></div>
+          <div style="font-size:12px; font-weight:800; color:#FF4444; margin-top:2px;" id="burrow-health">100/100 HP</div>
+          <div style="font-size:11px; opacity:0.8; margin-top:2px;">Minions: <span id="burrow-minions">0/2</span></div>
+          <div id="burrow-cost" style="font-size:11px; font-weight:bold; color:#FFD700; margin-top:4px;">Cost: 5 Coins</div>
+        </div>
+      </div>
+
+      <div class="hud-element ammo-display">
+        <div class="label">Water Ammo</div>
+        <div class="ammo-text" id="ammo-count">100</div>
+        <div class="ammo-bar">
+          <div class="ammo-fill" id="ammo-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-bottom">
+      <div class="hud-element controls">
+        <div><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> Move</div>
+        <div><kbd>Shift</kbd> Sprint</div>
+        <div><kbd>Mouse</kbd> Look Around</div>
+        <div><kbd>Click</kbd> Shoot</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+        <div class="hud-element health-display">
+          <div class="label">Health</div>
+          <div class="health-text" id="health-count">100</div>
+          <div class="health-bar">
+            <div class="health-fill" id="health-fill"></div>
+          </div>
+        </div>
+        <div class="hud-element">
+          <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Coins: <span id="coin-count" style="color:#FFD700;">0</span></div>
+          <div class="gun-tier-display">
+            <div style="font-size:9px; opacity:0.5; letter-spacing:1px; text-transform:uppercase;">Weapon</div>
+            <div id="gun-tier">Water Pistol Lv.1</div>
+          </div>
+        </div>
+        <div class="hud-element" style="margin-top:2px; border-color:#EEDD88; background:rgba(238,221,136,0.1);">
+          <div style="font-size:11px; font-weight:bold; color:#EEDD88; margin-bottom:2px; text-transform:uppercase;">Sand Burst</div>
+          <div style="font-size:9px; opacity:0.7; letter-spacing:1px;">Right Click</div>
+          <div class="ammo-bar" style="width: 120px; height: 6px; margin-top: 6px; background: rgba(238,221,136,0.1);">
+            <div class="ammo-fill" id="sandburst-fill" style="background: #EEDD88; transition: width 0.1s linear;"></div>
+          </div>
+        </div>
+        <div class="hud-element" id="fps-counter">-- FPS</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Removed old pointerlockchange logic as it's handled in main.js now
+
+    window.showNotification = function(title, message) {
+      const container = document.getElementById('notification-center');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.style.background = 'rgba(0,0,0,0.7)';
+      el.style.border = '2px solid #FFD700';
+      el.style.borderRadius = '8px';
+      el.style.padding = '12px 24px';
+      el.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.5)';
+      el.style.backdropFilter = 'blur(8px)';
+      el.style.textAlign = 'center';
+      el.style.animation = 'popin 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+      el.innerHTML = `<div style="font-size:24px; font-weight:900; color:#FFD700; letter-spacing:2px; text-transform:uppercase;">${title}</div>
+                      ${message ? `<div style="font-size:14px; opacity:0.8; margin-top:4px;">${message}</div>` : ''}`;
+      container.appendChild(el);
+      
+      // Remove after 3 seconds
       setTimeout(() => {
         el.style.animation = 'popout 0.3s forwards';
         setTimeout(() => el.remove(), 300);
       }, 3000);
     };
-  </script>
-  <script async src="https://vibejam.cc/2026/widget.js"></script>
+  </script>
 </body>
 </html>
