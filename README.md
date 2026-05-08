@@ -118,14 +118,14 @@ Output goes to `dist/`. All asset paths are relative so the build deploys on any
 | File | Description | Author / Source | License |
 |------|-------------|-----------------|---------|
 | `sounds/alec_koff-epic-drums-tribal.ogg` | Tribal drum ambience | Alec Koff | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — attribution required |
-| `sounds/pistol.mp3` | Pistol SFX | — | Verify source |
-| `sounds/shotgun.mp3` | Shotgun SFX | — | Verify source |
-| `sounds/smg.mp3` | SMG SFX | — | Verify source |
-| `sounds/heavy.mp3` | Heavy weapon SFX | — | Verify source |
-| `sounds/hit.mp3` | Hit SFX | — | Verify source |
-| `sounds/reload.wav` | Reload SFX | — | Verify source |
-| `sounds/turtle_*.mp3` | Turtle enemy SFX | — | Verify source |
-| `sounds/boss_*.mp3` | Boss enemy SFX | — | Verify source |
+| `sounds/pistol.mp3` | Pistol SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/shotgun.mp3` | Shotgun SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/smg.mp3` | SMG SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/heavy.mp3` | Heavy weapon SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/hit.mp3` | Hit SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/reload.wav` | Reload SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/turtle_*.mp3` | Turtle enemy SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `sounds/boss_*.mp3` | Boss enemy SFX | — | [CC0 1.0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `models/dialogues/*.mp3` | Character voice lines | Original / AI-generated | Original work |
 
 ### Fonts
