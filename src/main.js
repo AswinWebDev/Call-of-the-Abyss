@@ -20,7 +20,7 @@ import { BurrowManager } from './Burrow.js';
 import { DialogueManager } from './DialogueManager.js';
 import { EnemyProjectiles } from './EnemyProjectiles.js';
 import { UpgradeSystem } from './UpgradeSystem.js';
-import { submitScore, fetchTopScores, fetchPlayerRank } from './firebase.js';
+import { submitScore, fetchTopScores, fetchPlayerRank, initWavedash } from './wavedash.js';
 
 import { TouchControls } from './TouchControls.js';
 
@@ -134,15 +134,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // We don't block on it — even if the network is slow, the death
     // window appears at 7s and the leaderboard refreshes when ready.
     const runStats = {
-      name: window.playerName || 'Anonymous',
       wave: enemyManager.currentWave || 0,
       kills: enemyManager.totalKills || 0,
       coins: crab.totalCoinsCollected || 0
     };
-    const submission = submitScore(runStats).then((id) => {
-      _lastSubmittedDocId = id;
-      return id;
-    });
+    const submission = submitScore(runStats);
 
     // After 7s, show the Death Window with run stats
     setTimeout(() => {
@@ -235,11 +231,22 @@ document.addEventListener('DOMContentLoaded', () => {
     mainMenu.classList.remove('hidden');
   };
 
+  // ─── WAVEDASH SDK INIT ────────────────────────────────────
+  // If running on Wavedash, the SDK provides player identity and we
+  // skip the name-entry overlay. Otherwise fall back to the custom
+  // name input for local dev.
+  const wavedashUser = initWavedash();
+
   // If we already have a name from this session, skip the overlay
   let cachedName = '';
   try { cachedName = sessionStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) {}
 
-  if (cachedName) {
+  if (wavedashUser && wavedashUser.username) {
+    // Running on Wavedash — use platform identity, skip name overlay
+    setPlayerName(wavedashUser.username);
+    nameOverlay.classList.add('hidden');
+    mainMenu.classList.remove('hidden');
+  } else if (cachedName) {
     setPlayerName(cachedName);
     nameOverlay.classList.add('hidden');
     mainMenu.classList.remove('hidden');
@@ -274,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Used by the main menu, the dedicated leaderboard screen, and the death
   // window. Highlights the current player's row, and if their best is not
   // in the top N, appends an extra row showing their actual rank below.
-  let _lastSubmittedDocId = null;
+  // Wavedash matches the current player by userId from the SDK
 
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -300,10 +307,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const rows = await fetchTopScores(topN);
     const playerName = window.playerName;
 
-    // Are they in the top N? Match by docId first (most recent submission),
-    // fall back to name to cover earlier-session submissions.
+    // Are they in the top N? Match by name.
     const inTop = rows.some(r =>
-      (_lastSubmittedDocId && r.id === _lastSubmittedDocId) ||
       (playerName && r.name === playerName)
     );
 
@@ -311,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let myEntry = null;
     let myRank = null;
     if (playerName && !inTop) {
-      const result = await fetchPlayerRank(playerName);
+      const result = await fetchPlayerRank();
       if (result) {
         myEntry = result.entry;
         myRank = result.rank;
@@ -333,9 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     const body = rows.map((r, i) => {
-      const isYou =
-        (_lastSubmittedDocId && r.id === _lastSubmittedDocId) ||
-        (playerName && r.name === playerName);
+      const isYou = (playerName && r.name === playerName);
       return leaderboardRow(i + 1, r, isYou);
     }).join('');
 
