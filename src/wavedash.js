@@ -9,10 +9,9 @@
  *   → natural DESC sort = highest wave first, kills as tiebreaker.
  */
 
-import Wavedash from '@wvdsh/sdk-js';
-
 // ── SDK state ─────────────────────────────────────────────────────
 let _ready = false;   // true only after init() succeeded
+let Wavedash = null;
 
 // ── Leaderboard bootstrap ─────────────────────────────────────────
 const LEADERBOARD_NAME = 'high-scores';
@@ -58,8 +57,10 @@ function decodeScore(score) {
  * dismisses the Wavedash loading screen. Returns { username } on
  * Wavedash, null on plain localhost.
  */
-export function initWavedash() {
+export async function initWavedash() {
   try {
+    const mod = await import('@wvdsh/sdk-js');
+    Wavedash = mod.default || mod;
     Wavedash.init({ debug: true });
     _ready = true;
     const username = Wavedash.getUsername ? Wavedash.getUsername() : null;

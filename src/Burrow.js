@@ -26,7 +26,7 @@ export class BurrowManager {
     this.maxHealth = 400;
     this.health = 400;
     this.position = new THREE.Vector3(-60, 0, 0); // Moved to the center inland for full 360 surrounds
-    this.depositRadius = 10.0;
+    this.depositRadius = 14.0;
     this.state = BURROW_STATE.ACTIVE;
     
     // Economy
@@ -68,7 +68,6 @@ export class BurrowManager {
       if (m.model) this.scene.remove(m.model);
     }
     this.minions = [];
-    // Restore base capacities — upgrades had mutated these upward
     this.maxHealth = 400;
     this.maxMinions = 3;
     this.health = this.maxHealth;
@@ -76,7 +75,16 @@ export class BurrowManager {
     this.state = BURROW_STATE.ACTIVE;
     this.rebuildTimer = 0;
     this.coinTimer = 0;
-    // Snap back to ground in case it had sunk during destruction
+    // Restore burrow visuals
+    if (this._burrowMaterials) {
+      for (const mat of this._burrowMaterials) {
+        mat.opacity = 1.0;
+        if (mat._originalColor) mat.color.copy(mat._originalColor);
+        if (mat.emissive) mat.emissive.setHex(0x000000);
+      }
+    }
+    if (this._burrowLight) this._burrowLight.intensity = 2.0;
+    if (this._beacon) this._beacon.visible = true;
     if (this.world) {
       this.burrowGroup.position.y = this.world.getTerrainHeight(this.position.x, this.position.z) - 0.2;
     } else {
@@ -86,83 +94,145 @@ export class BurrowManager {
   }
 
   _buildBurrow() {
-    // Load rocks to create a protective circle
-    this.loader.load('./models/simple_rock_iv.glb', (gltf) => {
-      const rockModel = gltf.scene;
-      
-      const rockCount = 20;
-      const radius = 9.0;
-      for (let i = 0; i < rockCount; i++) {
-        // Create a nearly full circle (leave a small gap in the front)
-        if (i === 0) continue; 
+    // Load the crab burrow GLB model
+    this.loader.load('./models/crab_burrow.glb', (gltf) => {
+      const model = gltf.scene;
 
-        const rock = rockModel.clone();
-        const angle = (i / rockCount) * Math.PI * 2;
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        
-        rock.position.set(x, 0, z);
-        // Make the rocks massive to look like a fortified base
-        rock.scale.setScalar(4.0 + Math.random() * 3.5);
-        rock.rotation.y = Math.random() * Math.PI;
-        rock.rotation.z = (Math.random() - 0.5) * 0.5;
-        
-        rock.traverse(child => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            if (child.material) {
-              child.material = child.material.clone();
-            }
+      // Auto-scale to ~56 units wide (massive home base)
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const scale = 56.0 / maxDim;
+      model.scale.setScalar(scale);
+
+      // Face the sea (positive X direction)
+      model.rotation.y = Math.PI / 2;
+
+      // Cache materials for opacity-based destroy/rebuild
+      this._burrowMaterials = [];
+      model.traverse(child => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material = child.material.clone();
+            child.material.transparent = true;
+            child.material.opacity = 1.0;
+            child.material._originalColor = child.material.color.clone();
+            this._burrowMaterials.push(child.material);
           }
-        });
-        
-        this.burrowGroup.add(rock);
-        
-        // Add random driftwood pieces sticking out of the barricade for extra detail
-        if (Math.random() < 0.4) {
-          const woodGeo = new THREE.CylinderGeometry(0.2, 0.4, 4 + Math.random() * 3, 6);
-          const woodMat = new THREE.MeshStandardMaterial({ color: 0x8B6914, roughness: 0.95, metalness: 0.0 });
-          const wood = new THREE.Mesh(woodGeo, woodMat);
-          wood.position.set(x + (Math.random() - 0.5), 1.5, z + (Math.random() - 0.5));
-          wood.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-          wood.castShadow = true;
-          this.burrowGroup.add(wood);
         }
-      }
-      
-      // Add a massive sand mound in center
-      const moundGeo = new THREE.CylinderGeometry(0.1, 8.5, 2.5, 16);
-      const moundMat = new THREE.MeshStandardMaterial({ color: 0xd4a86a, roughness: 1.0 });
-      const mound = new THREE.Mesh(moundGeo, moundMat);
-      mound.position.y = 0.75;
-      mound.receiveShadow = true;
-      this.burrowGroup.add(mound);
+      });
 
-      // Add a central glow and massive beacon so it's obvious from anywhere
-      const light = new THREE.PointLight(0xffaa00, 3.0, 25);
-      light.position.y = 2.0;
+      this.burrowGroup.add(model);
+      this.burrowModel = model;
+
+      // Warm interior glow
+      const light = new THREE.PointLight(0xffaa00, 2.0, 20);
+      light.position.y = 3.0;
       this.burrowGroup.add(light);
+      this._burrowLight = light;
 
-      const beaconGeo = new THREE.CylinderGeometry(1.5, 0.4, 60.0, 12);
-      const beaconMat = new THREE.MeshBasicMaterial({ 
-        color: 0xFFD700, 
-        transparent: true, 
-        opacity: 0.2,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
+      // Subtle golden beacon
+      const beaconGeo = new THREE.CylinderGeometry(0.8, 0.3, 40.0, 8);
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: 0xFFD700, transparent: true, opacity: 0.15,
+        blending: THREE.AdditiveBlending, depthWrite: false
       });
       const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-      beacon.position.y = 20.0;
+      beacon.position.y = 15.0;
       this.burrowGroup.add(beacon);
-      
-      // Correct burrow Y position to match terrain
+      this._beacon = beacon;
+
+      // Position at terrain height
       this.burrowGroup.position.y = this.world.getTerrainHeight(this.position.x, this.position.z) - 0.2;
+
+      // Register burrow as a collider so nothing phases through it
+      if (this.world) {
+        this.world.colliders.push({
+          x: this.position.x,
+          z: this.position.z,
+          radius: 12.0  // solid center of the burrow
+        });
+      }
+
+      // ── Home props (separate group — persists through destruction) ──
+      this._buildHomeProps();
 
       // Unhide HUD
       const hud = document.getElementById('burrow-hud');
       if (hud) hud.style.display = 'block';
     });
+  }
+
+  _buildHomeProps() {
+    this.homeGroup = new THREE.Group();
+    this.homeGroup.position.copy(this.position);
+    this.homeGroup.position.y = this.world.getTerrainHeight(this.position.x, this.position.z);
+    this.scene.add(this.homeGroup);
+
+    // Campfire ring — small rocks in a circle
+    const cfX = 8, cfR = 2.5;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const rGeo = new THREE.SphereGeometry(0.4, 6, 4);
+      const rMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 });
+      const rock = new THREE.Mesh(rGeo, rMat);
+      rock.position.set(cfX + Math.cos(a) * cfR, 0.2, Math.sin(a) * cfR);
+      rock.scale.set(1 + Math.random() * 0.5, 0.6, 1 + Math.random() * 0.5);
+      rock.castShadow = true;
+      this.homeGroup.add(rock);
+    }
+
+    // Campfire light + embers
+    this._campfireLight = new THREE.PointLight(0xff6600, 1.5, 12);
+    this._campfireLight.position.set(cfX, 1.5, 0);
+    this.homeGroup.add(this._campfireLight);
+
+    const emberGeo = new THREE.SphereGeometry(0.6, 8, 6);
+    const emberMat = new THREE.MeshStandardMaterial({
+      color: 0x331100, emissive: 0xff4400, emissiveIntensity: 2.0, roughness: 1.0
+    });
+    const embers = new THREE.Mesh(emberGeo, emberMat);
+    embers.position.set(cfX, 0.3, 0);
+    embers.scale.set(1.5, 0.5, 1.5);
+    this.homeGroup.add(embers);
+    this._campfireEmbers = embers;
+
+    // Driftwood log seats
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8B6914, roughness: 0.95 });
+    const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 4.0, 6), woodMat);
+    log1.position.set(cfX + 3.5, 0.4, -1.5);
+    log1.rotation.set(0, 0.3, Math.PI / 2);
+    log1.castShadow = true;
+    this.homeGroup.add(log1);
+
+    const log2 = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6), woodMat);
+    log2.position.set(cfX - 1.5, 0.3, 3.0);
+    log2.rotation.set(0, -0.4, Math.PI / 2);
+    log2.castShadow = true;
+    this.homeGroup.add(log2);
+
+    // Coconut pile
+    const cMat = new THREE.MeshStandardMaterial({ color: 0x654321, roughness: 0.8 });
+    for (let i = 0; i < 5; i++) {
+      const c = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), cMat);
+      c.position.set(-4 + (Math.random() - 0.5) * 2, 0.5, 6 + (Math.random() - 0.5) * 2);
+      c.scale.set(1, 0.9, 1);
+      c.castShadow = true;
+      this.homeGroup.add(c);
+    }
+
+    // Seashells at entrance
+    const shellColors = [0xFFF5E1, 0xFFE4C4, 0xF5DEB3];
+    for (let i = 0; i < 6; i++) {
+      const sGeo = new THREE.SphereGeometry(0.25, 6, 4);
+      sGeo.scale(1, 0.25, 1.2);
+      const s = new THREE.Mesh(sGeo, new THREE.MeshStandardMaterial({ color: shellColors[i % 3], roughness: 0.5, metalness: 0.15 }));
+      s.position.set(5 + (Math.random() - 0.5) * 4, 0.1, -4 + (Math.random() - 0.5) * 3);
+      s.rotation.y = Math.random() * Math.PI * 2;
+      this.homeGroup.add(s);
+    }
   }
 
   _loadMinionModel() {
@@ -352,7 +422,6 @@ export class BurrowManager {
   _destroyBurrow() {
     this.state = BURROW_STATE.DESTROYED;
     console.log("Burrow Destroyed!");
-    // Lose all unhatched eggs
     for (const egg of this.eggs) {
       this.burrowGroup.remove(egg.mesh);
     }
@@ -360,14 +429,22 @@ export class BurrowManager {
     this.level = 1;
     this.maxMinions = 3;
     
-    // Make burrow look broken (sink into ground)
-    this.burrowGroup.position.y -= 2.0;
+    // Fade burrow to damaged state (opacity + darken)
+    if (this._burrowMaterials) {
+      for (const mat of this._burrowMaterials) {
+        mat.opacity = 0.3;
+        mat.color.multiplyScalar(0.4);
+        if (mat.emissive) mat.emissive.setHex(0x220000);
+      }
+    }
+    if (this._burrowLight) this._burrowLight.intensity = 0.3;
+    if (this._beacon) this._beacon.visible = false;
     
     if (window.showNotification) {
       window.showNotification("Burrow Destroyed!", "Deposit 15 Shells to rebuild it.");
     }
     if (this.dialogue && this.crab && this.crab.model) {
-      this.dialogue.heroCooldown = 0; // Force override
+      this.dialogue.heroCooldown = 0;
       this.dialogue.speak(this.crab.model, "Oh no! The burrow is destroyed!", 'hero', 3.0);
     }
     this._updateHUD();
@@ -411,11 +488,12 @@ export class BurrowManager {
       this.coinTimer += dt;
       if (this.coinTimer >= 3.0) {
         this.coinTimer = 0;
-        const angle = Math.random() * Math.PI * 2;
-        const r = 2.0 + Math.random() * 2.0; // Near burrow
+        // Spawn coins in front of the burrow (toward the sea, +X direction)
+        const spreadZ = (Math.random() - 0.5) * 10;
+        const forwardX = this.depositRadius + 5.0 + Math.random() * 5.0;
         const dropPos = this.position.clone();
-        dropPos.x += Math.cos(angle) * r;
-        dropPos.z += Math.sin(angle) * r;
+        dropPos.x += forwardX;
+        dropPos.z += spreadZ;
         enemyManager._spawnDrop(dropPos, 'coin', 1);
       }
     }
@@ -428,13 +506,26 @@ export class BurrowManager {
       this.rebuildFill.scale.x = Math.max(0.01, progress);
       this.rebuildFill.position.x = -2.5 + (2.5 * progress);
       
-      // Animate rising slowly
-      this.burrowGroup.position.y += (2.0 / this.rebuildDuration) * dt;
+      // Animate opacity restoration (0.3 → 1.0)
+      if (this._burrowMaterials) {
+        const op = 0.3 + progress * 0.7;
+        for (const mat of this._burrowMaterials) mat.opacity = op;
+      }
+      if (this._burrowLight) this._burrowLight.intensity = 0.3 + progress * 1.7;
       
       if (progress >= 1.0) {
         this.state = BURROW_STATE.ACTIVE;
         this.health = this.maxHealth;
-        this.burrowGroup.position.y = this.world.getTerrainHeight(this.position.x, this.position.z) - 0.2;
+        // Fully restore materials
+        if (this._burrowMaterials) {
+          for (const mat of this._burrowMaterials) {
+            mat.opacity = 1.0;
+            if (mat._originalColor) mat.color.copy(mat._originalColor);
+            if (mat.emissive) mat.emissive.setHex(0x000000);
+          }
+        }
+        if (this._burrowLight) this._burrowLight.intensity = 2.0;
+        if (this._beacon) this._beacon.visible = true;
         this.burrowGroup.remove(this.rebuildBg);
         this.burrowGroup.remove(this.rebuildFill);
         
@@ -442,7 +533,7 @@ export class BurrowManager {
           window.showNotification("Burrow Restored!", "Your Burrow is back online.");
         }
         if (this.dialogue && this.crab && this.crab.model) {
-          this.dialogue.heroCooldown = 0; // Force override
+          this.dialogue.heroCooldown = 0;
           this.dialogue.speak(this.crab.model, "The burrow is back online!", 'hero', 3.0);
         }
       }

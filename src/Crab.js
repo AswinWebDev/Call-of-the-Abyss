@@ -398,6 +398,8 @@ export class Crab {
     // ─── COLLISIONS ─────────────────────────────────────────
     const crabRadius = 3.0;
     for (const col of this.world.colliders) {
+      // Skip height-limited colliders when crab is above them (jumping over)
+      if (col.height && this.position.y > groundY + col.height) continue;
       const dist = Math.sqrt((nx - col.x) ** 2 + (nz - col.z) ** 2);
       if (dist < col.radius + crabRadius) {
         const angle = Math.atan2(nz - col.z, nx - col.x);

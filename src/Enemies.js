@@ -121,6 +121,19 @@ export class EnemyManager {
     this._loadModel();
   }
 
+  // Push enemy out of burrow collider so they can't phase through
+  _enforceBurrowCollision(enemy) {
+    const bx = -60, bz = 0, br = 14.0; // burrow center and collision radius
+    const dx = enemy.position.x - bx;
+    const dz = enemy.position.z - bz;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < br && dist > 0.01) {
+      const pushAngle = Math.atan2(dz, dx);
+      enemy.position.x = bx + Math.cos(pushAngle) * br;
+      enemy.position.z = bz + Math.sin(pushAngle) * br;
+    }
+  }
+
   /**
    * Wipe all live state (enemies, drops, wave counters) for a Retry.
    * Loaded models / animations are kept so we don't re-fetch GLBs.
@@ -1487,6 +1500,7 @@ export class EnemyManager {
 
               enemy.position.x += actualNx * enemy.speed * 2.0 * dt;
               enemy.position.z += nz * enemy.speed * 2.0 * dt;
+              this._enforceBurrowCollision(enemy);
               enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
               if (enemy.walkAction) enemy.walkAction.timeScale = 2.0;
             } else if (dirLen > 20.0) {
@@ -1495,6 +1509,7 @@ export class EnemyManager {
               const nz = dirZ / dirLen;
               enemy.position.x += nx * enemy.speed * 0.5 * dt;
               enemy.position.z += nz * enemy.speed * 0.5 * dt;
+              this._enforceBurrowCollision(enemy);
               enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
               if (enemy.walkAction) enemy.walkAction.timeScale = 0.5;
             } else {
@@ -1576,6 +1591,7 @@ export class EnemyManager {
                   
                   enemy.position.x += nx * currentSpeed * dt;
                   enemy.position.z += nz * currentSpeed * dt;
+                  this._enforceBurrowCollision(enemy);
                   enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
                   
                   // Face dash direction
@@ -1632,6 +1648,7 @@ export class EnemyManager {
 
             enemy.position.x += nx * currentSpeed * dt;
             enemy.position.z += nz * currentSpeed * dt;
+            this._enforceBurrowCollision(enemy);
             enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
 
             // Face crab
@@ -1670,6 +1687,7 @@ export class EnemyManager {
           if (enemy._lungeProgress < 1) {
             enemy.position.x += enemy._lungeDir.x * lungeSpeed * dt;
             enemy.position.z += enemy._lungeDir.z * lungeSpeed * dt;
+            this._enforceBurrowCollision(enemy);
             enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
 
             // Flash red during lunge

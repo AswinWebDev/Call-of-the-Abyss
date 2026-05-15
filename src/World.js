@@ -81,7 +81,6 @@ export class World {
 
     // Flatten spawn area
     if (Math.abs(x) < 10 && Math.abs(z - 40) < 10) y = 2.0;
-
     return y;
   }
 
@@ -433,10 +432,12 @@ export class World {
         }
       }
 
-      // Avoid crab spawn area
+      // Avoid crab spawn area and burrow home area
       if (Math.abs(rx) < 12 && Math.abs(rz - 40) < 25) {
         rx += rx > 0 ? 18 : -18;
       }
+      const dBurrow = Math.sqrt((rx + 60) ** 2 + rz ** 2);
+      if (dBurrow < 35) continue;
 
       const ry = this.getTerrainHeight(rx, rz);
 
@@ -528,7 +529,10 @@ export class World {
 
       const y = this.getTerrainHeight(x, z);
 
-      if (y < 4) continue; // Keep away from water
+      if (y < 4) continue;
+      // Exclusion zone around burrow home
+      const dB = Math.sqrt((x + 60) ** 2 + z ** 2);
+      if (dB < 35) continue;
 
       dummy.position.set(x, y - 0.1, z);
       dummy.rotation.y = Math.random() * Math.PI * 2;
@@ -663,21 +667,19 @@ export class World {
 
   _loadTrees() {
     this.loader.load('./models/coconut_tree.glb', (gltf) => {
-      for (let i = 0; i < 15; i++) { // Fewer trees to avoid blocking movement
-        const tree = gltf.scene.clone();
-        const x = -20 - Math.random() * 100;
-        const z = -190 + Math.random() * 380;
-        let y = this.getTerrainHeight(x, z);
+      const BX = -60, BZ = 0;
 
+      // Helper to place one tree
+      const placeTree = (x, z, scale, tiltZ = 0, castShadow = true) => {
+        const tree = gltf.scene.clone();
+        const y = this.getTerrainHeight(x, z);
         tree.position.set(x, y - 1.5, z);
         tree.rotation.y = Math.random() * Math.PI * 2;
-        tree.rotation.z = (Math.random() - 0.5) * 0.15;
-        const scale = 14.0 + Math.random() * 10.0;
+        tree.rotation.z = tiltZ;
         tree.scale.setScalar(scale);
-
-        tree.traverse((child) => {
+        tree.traverse(child => {
           if (child.isMesh) {
-            child.castShadow = true;
+            child.castShadow = castShadow;
             child.receiveShadow = true;
             if (child.material) {
               child.material.side = THREE.DoubleSide;
@@ -687,39 +689,63 @@ export class World {
             }
           }
         });
-
         this.scene.add(tree);
         this.trees.push(tree);
+        if (x > -80) this.colliders.push({ x, z, radius: scale * 0.35 });
+      };
 
-        // Collider
-        this.colliders.push({ x: x, z: z, radius: scale * 0.35 });
+      // ── Burrow surroundings — open space, just a few trees on flanks ──
+      placeTree(-80, -40, 16, 0);   // Left flank, back
+      placeTree(-45, -45, 14, 0);   // Left flank, front
+      placeTree(-80,  40, 17, 0);   // Right flank, back
+      placeTree(-45,  45, 15, 0);   // Right flank, front
+
+      // ── Beach-edge palms — scenic framing along the shore ───
+      placeTree(-20, -80, 16, 0);
+      placeTree(-15, -30, 14, 0);
+      placeTree(-18,  50, 18, 0);
+      placeTree(-25, 110, 15, 0);
+      placeTree(-22, 160, 17, 0);
+
+      // ── Jungle backdrop wall (x < -80) ──────────────────────
+      const jungleSpots = [
+        { x: -100, z: -180 }, { x: -120, z: -140 }, { x: -140, z: -100 },
+        { x: -130, z: -50 },  { x: -150, z: 0 },    { x: -140, z: 50 },
+        { x: -120, z: 100 },  { x: -100, z: 140 },  { x: -130, z: 180 },
+        { x: -110, z: -160 }, { x: -150, z: -80 },  { x: -160, z: -20 },
+        { x: -135, z: 30 },   { x: -155, z: 80 },   { x: -115, z: 160 },
+        { x: -145, z: -120 }, { x: -125, z: 70 },   { x: -135, z: -170 },
+        { x: -110, z: 200 },  { x: -150, z: 130 }
+      ];
+      for (const s of jungleSpots) {
+        placeTree(s.x + (Math.random()-0.5)*10, s.z + (Math.random()-0.5)*15,
+                  14 + Math.random() * 10, (Math.random()-0.5)*0.15, false);
       }
 
-      // Small undergrowth trees / fallen logs
-      for (let i = 0; i < 60; i++) {
-        const tree = SkeletonUtils.clone(gltf.scene);
+      // ── Side flanks ─────────────────────────────────────────
+      const flankSpots = [
+        { x: -40, z: -150 }, { x: -60, z: -170 }, { x: -80, z: -160 },
+        { x: -50, z: -190 }, { x: -40, z: 150 },  { x: -60, z: 170 },
+        { x: -80, z: 160 },  { x: -50, z: 190 }
+      ];
+      for (const s of flankSpots) {
+        placeTree(s.x + (Math.random()-0.5)*8, s.z + (Math.random()-0.5)*10,
+                  12 + Math.random() * 8, (Math.random()-0.5)*0.2);
+      }
 
-        // Scatter mostly on cliffs and deep sides
-        const rawX = Math.random();
-        const x = -130 + Math.pow(rawX, 2.0) * 120; // Bias towards back cliff
-
-        const zSign = Math.random() < 0.5 ? -1 : 1;
-        const zMag = Math.pow(Math.random(), 0.6) * 190;
-        const z = zSign * zMag;
-
-        const y = this.getTerrainHeight(x, z);
-
-        tree.position.set(x, y - 0.5, z); // Sunk slightly
-        tree.rotation.y = Math.random() * Math.PI * 2;
-
-        // Wild, chaotic tilts for underbrush (some almost fallen over)
-        tree.rotation.z = (Math.random() - 0.5) * 1.5;
-        tree.rotation.x = (Math.random() - 0.5) * 1.5;
-
-        const scale = 2.0 + Math.random() * 5.0; // Very small compared to 14-24 scale of big trees
-        tree.scale.setScalar(scale);
-
-        tree.traverse((child) => {
+      // ── Fallen trees — laying on ground, 20% buried in sand ──────
+      const fallenSpots = [
+        { x: -90, z: 60, rotY: -0.4 },
+        { x: -100, z: -50, rotY: 0.6 }
+      ];
+      for (const s of fallenSpots) {
+        const fallen = gltf.scene.clone();
+        const fy = this.getTerrainHeight(s.x, s.z);
+        // Sink 20% into sand, lay nearly flat (~80° from vertical)
+        fallen.position.set(s.x, fy - 4.0, s.z);
+        fallen.rotation.set(Math.PI * 0.45, s.rotY, 0); // ~81° tilt = nearly flat
+        fallen.scale.setScalar(14);
+        fallen.traverse(child => {
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
@@ -731,11 +757,46 @@ export class World {
             }
           }
         });
+        this.scene.add(fallen);
+        this.colliders.push({ x: s.x, z: s.z, radius: 6.0, height: 2.5 });
+      }
 
+      // ── Undergrowth (dense jungle floor, excludes burrow area) ──
+      const undergrowthCount = 120;
+      for (let i = 0; i < undergrowthCount; i++) {
+        const tree = SkeletonUtils.clone(gltf.scene);
+        const rawX = Math.random();
+        const x = -160 + Math.pow(rawX, 1.8) * 150;
+        const zSign = Math.random() < 0.5 ? -1 : 1;
+        const zMag = Math.pow(Math.random(), 0.6) * 220;
+        const z = zSign * zMag;
+        // Exclusion zone around burrow
+        const dB = Math.sqrt((x - BX) ** 2 + (z - BZ) ** 2);
+        if (dB < 35) continue;
+        const y = this.getTerrainHeight(x, z);
+        const sc = 2.0 + Math.random() * 5.0;
+        // Sink 20% of height below ground so tilted bases stay hidden
+        tree.position.set(x, y - sc * 0.6, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        tree.rotation.z = (Math.random() - 0.5) * 1.5;
+        tree.rotation.x = (Math.random() - 0.5) * 1.5;
+        tree.scale.setScalar(sc);
+        tree.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = false;
+            child.receiveShadow = true;
+            if (child.material) {
+              child.material.side = THREE.DoubleSide;
+              child.material.alphaTest = 0.5;
+              child.material.transparent = false;
+              child.material.depthWrite = true;
+            }
+          }
+        });
         this.scene.add(tree);
       }
 
-      console.log('✓ Coconut trees loaded');
+      console.log('✓ Trees loaded (purposeful placement)');
     });
   }
 
@@ -748,26 +809,36 @@ export class World {
       // 3x larger base scale for massive ferns
       const baseScale = maxDim > 0 ? (40.0 / maxDim) : 1.0;
 
-      // 3 hero ferns at original spots + a clustered band along the now-climbable
-      // back cliff (x in [-150, -120]) so the climb has greenery to discover.
+      // 5 hero ferns at key scenic points
       const heroSpots = [
         { x: -95, z: -140 }, // Deep left side
         { x: -65, z: -60 },  // Mid back
-        { x: -85, z: 140 }   // Front area
+        { x: -85, z: 140 },  // Front area
+        { x: -40, z: -180 }, // Far side flank
+        { x: -50, z: 190 }   // Opposite flank
       ];
 
+      // Dense cliff band — 18 bushes spread across the back wall
       const cliffBand = [];
-      // Spread 9 bushes in a rough band along the back cliff
-      for (let k = 0; k < 9; k++) {
+      for (let k = 0; k < 18; k++) {
         cliffBand.push({
-          x: -150 + Math.random() * 30, // x ∈ [-150, -120]
-          z: -170 + (k / 8) * 340 + (Math.random() - 0.5) * 18 // jittered z spread
+          x: -160 + Math.random() * 40, // x ∈ [-160, -120]
+          z: -200 + (k / 17) * 400 + (Math.random() - 0.5) * 20
         });
       }
-      const positions = heroSpots.concat(cliffBand);
+
+      // Mid-jungle fill — 10 ferns scattered through the canopy interior
+      const midFill = [];
+      for (let k = 0; k < 10; k++) {
+        midFill.push({
+          x: -60 - Math.random() * 60, // x ∈ [-120, -60]
+          z: -180 + Math.random() * 360
+        });
+      }
+
+      const positions = heroSpots.concat(cliffBand, midFill);
 
       for (let i = 0; i < positions.length; i++) {
-        // Use SkeletonUtils in case the vegetation is rigged
         const fern = SkeletonUtils.clone(gltf.scene);
 
         const spot = positions[i];
@@ -776,16 +847,16 @@ export class World {
         fern.position.set(spot.x, y - 0.1, spot.z);
         fern.rotation.y = Math.random() * Math.PI * 2;
 
-        // Hero ferns stay big; cliff-band bushes are smaller and varied
+        // Hero ferns stay big; others are smaller and varied
         const isHero = i < heroSpots.length;
         const instanceScale = isHero
           ? baseScale * (1.0 + Math.random() * 0.5)
-          : baseScale * (0.45 + Math.random() * 0.35);
+          : baseScale * (0.4 + Math.random() * 0.4);
         fern.scale.setScalar(instanceScale);
 
         fern.traverse((child) => {
           if (child.isMesh) {
-            child.castShadow = true;
+            child.castShadow = isHero; // Only hero ferns cast shadows for perf
             child.receiveShadow = true;
             if (child.material) {
               child.material.side = THREE.DoubleSide;
@@ -798,7 +869,7 @@ export class World {
 
         this.scene.add(fern);
       }
-      console.log('✓ Ferns loaded prominently');
+      console.log('✓ Ferns loaded (dense jungle)');
     }, undefined, (err) => console.log('Failed to load ferns', err));
   }
 

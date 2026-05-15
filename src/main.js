@@ -60,14 +60,14 @@ let _lastWaveForDrums = 0;
 // Game State: 'MENU' or 'PLAYING'
 let gameState = 'MENU';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const canvas = document.getElementById('game-canvas');
   if (!canvas) { console.error('Canvas not found'); return; }
 
   // ─── WAVEDASH SDK INIT (must be first — dismisses the loading screen) ─
   // initWavedash() calls Wavedash.init() which signals to the Wavedash
   // platform that the game has loaded. If not on Wavedash it no-ops.
-  const wavedashUser = initWavedash();
+  const wavedashUser = await initWavedash();
 
   // Re-apply touch-mode class once <body> is definitely available
   if (HAS_TOUCH && document.body) document.body.classList.add('touch-mode');
@@ -241,18 +241,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedName = '';
   try { cachedName = sessionStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) {}
 
+  // Name sourced from Wavedash → session cache → fallback.
+  // The name-entry overlay is disabled (Wavedash handles identity).
   if (wavedashUser && wavedashUser.username) {
-    // Running on Wavedash — use platform identity, skip name overlay
     setPlayerName(wavedashUser.username);
-    nameOverlay.classList.add('hidden');
-    mainMenu.classList.remove('hidden');
   } else if (cachedName) {
     setPlayerName(cachedName);
-    nameOverlay.classList.add('hidden');
-    mainMenu.classList.remove('hidden');
   } else {
-    setTimeout(() => nameInput && nameInput.focus(), 100);
+    setPlayerName('Survivor'); // Fallback — overlay disabled
   }
+  if (nameOverlay) nameOverlay.classList.add('hidden');
+  mainMenu.classList.remove('hidden');
 
   // Bind both pointerdown (fast on mobile, no 300ms tap delay) and click
   // (desktop fallback) — guarded so a single tap can't fire twice.
@@ -992,9 +991,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       dialogue.update(dt);
 
-      // Burrow update & deposit
+      // Burrow update & deposit — interaction zone is IN FRONT of the burrow (toward sea)
       burrowManager.update(dt, time, enemyManager);
-      if (crab.coins > 0 && crab.position.distanceTo(burrowManager.position) < burrowManager.depositRadius) {
+      const depositPoint = burrowManager.position.clone();
+      depositPoint.x += 15; // In front of burrow (sea side)
+      if (crab.coins > 0 && crab.position.distanceTo(depositPoint) < 18) {
         const used = burrowManager.tryInteract(crab.coins);
         if (used > 0) {
           crab.coins -= used;
