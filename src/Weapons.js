@@ -381,10 +381,9 @@ export class WeaponSystem {
     // Fire ~15 times per second
     this._hoseCooldown = 1.0 / 15.0;
 
-    // Focus bullets exactly where the crosshair is looking
+    // Shoot straight where the crosshair is looking
     const camFwd = new THREE.Vector3();
     camera.getWorldDirection(camFwd);
-    const focalPoint = camera.position.clone().add(camFwd.multiplyScalar(60.0));
 
     const projectiles = [];
     // Per-tick damage. Old hose was 5s with 0.2× scaling; the new 1s window
@@ -394,7 +393,7 @@ export class WeaponSystem {
 
     for (let m = 0; m < this.muzzlePoints.length; m++) {
       const muzzlePos = this.muzzlePoints[m];
-      const dir = focalPoint.clone().sub(muzzlePos).normalize();
+      const dir = camFwd.clone().normalize();
       dir.y += 0.03;
       dir.normalize();
 
@@ -440,10 +439,9 @@ export class WeaponSystem {
       this.audio.playShellDropSound();
     }
 
-    // Focus bullets exactly where the crosshair is looking
+    // Shoot straight where the crosshair is looking
     const camFwd = new THREE.Vector3();
     camera.getWorldDirection(camFwd);
-    const focalPoint = camera.position.clone().add(camFwd.multiplyScalar(60.0));
 
     const projectiles = [];
 
@@ -451,7 +449,7 @@ export class WeaponSystem {
       const muzzlePos = this.muzzlePoints[m];
       
       for (let i = 0; i < s.projectilesPerShot; i++) {
-        const dir = focalPoint.clone().sub(muzzlePos).normalize();
+        const dir = camFwd.clone().normalize();
 
         // Apply spread
         if (s.spread > 0) {
@@ -475,7 +473,7 @@ export class WeaponSystem {
           position: muzzlePos.clone().add(dir.clone().multiplyScalar(0.2)),
           velocity: dir.multiplyScalar(s.projectileSpeed),
           damage: finalDamage,
-          tier: this._isRageMode ? 3 : (this.currentType === 'shotgun' ? 1 : 0),
+          tier: this.currentType === 'shotgun' ? 1 : 0,
           options: { isShotgun: this.currentType === 'shotgun', isCrit, hitScale: this._isRageMode ? 3.0 : 1.0 }
         });
       }
