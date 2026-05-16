@@ -805,7 +805,7 @@ export class AudioManager {
     }
     if (this._rageResurrectLoading) return;
     this._rageResurrectLoading = true;
-    fetch("./sounds/Back from the deep. now it's YOUR turn.mp3")
+    fetch("./models/dialogues/Back-from-the-deep-now-its-YOUR-turn.mp3")
       .then(r => r.arrayBuffer())
       .then(ab => this.ctx.decodeAudioData(ab))
       .then(b => {
@@ -832,7 +832,7 @@ export class AudioManager {
     }
     if (this._rageEndLoading) return;
     this._rageEndLoading = true;
-    fetch("./sounds/Alright Alright … maybe I overdid that.mp3")
+    fetch("./models/dialogues/Alright-Alright-maybe-I-overdid-that.mp3")
       .then(r => r.arrayBuffer())
       .then(ab => this.ctx.decodeAudioData(ab))
       .then(b => {
@@ -904,7 +904,7 @@ export class AudioManager {
     }
     if (this._rageResurrectLoading) return;
     this._rageResurrectLoading = true;
-    fetch("./sounds/Back from the deep… now it’s YOUR turn.mp3")
+    fetch("./models/dialogues/Back-from-the-deep-now-its-YOUR-turn.mp3")
       .then(r => r.arrayBuffer())
       .then(ab => this.ctx.decodeAudioData(ab))
       .then(b => {
