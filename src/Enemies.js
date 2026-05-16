@@ -1789,6 +1789,54 @@ export class EnemyManager {
       }
     }
 
+    // ─── ENEMY SEPARATION PASS (Optimized O(N²/2)) ─────────────
+    // Separated out of the main AI loop so we only check each pair exactly once
+    const numEnemies = this.enemies.length;
+    for (let i = 0; i < numEnemies; i++) {
+      const e1 = this.enemies[i];
+      if (e1.state === TURTLE_STATE.DEAD || e1.state === TURTLE_STATE.DYING || e1.state === TURTLE_STATE.SPAWNING) continue;
+      
+      for (let j = i + 1; j < numEnemies; j++) {
+        const e2 = this.enemies[j];
+        if (e2.state === TURTLE_STATE.DEAD || e2.state === TURTLE_STATE.DYING || e2.state === TURTLE_STATE.SPAWNING) continue;
+        
+        const dx = e1.position.x - e2.position.x;
+        const dz = e1.position.z - e2.position.z;
+        const distSq = dx * dx + dz * dz;
+
+        const r1 = e1.hitRadius || 1.5;
+        const r2 = e2.hitRadius || 1.5;
+        const minDist = (r1 + r2) * 0.85;
+
+        if (distSq > 0 && distSq < minDist * minDist) {
+          const dist = Math.sqrt(distSq);
+          const overlap = minDist - dist;
+          const nx = dx / dist;
+          const nz = dz / dist;
+
+          const w1 = e1.isCthulhu ? 100 : (e1.isBoss ? 10 : 1);
+          const w2 = e2.isCthulhu ? 100 : (e2.isBoss ? 10 : 1);
+          const totalW = w1 + w2;
+          
+          // Push both simultaneously proportional to their weight difference
+          const push1 = overlap * (w2 / totalW) * 8.0 * dt;
+          const push2 = overlap * (w1 / totalW) * 8.0 * dt;
+
+          e1.position.x += nx * push1;
+          e1.position.z += nz * push1;
+          e2.position.x -= nx * push2;
+          e2.position.z -= nz * push2;
+
+          // Re-enforce bounds
+          this._enforceBurrowCollision(e1);
+          e1.position.y = this.world.getTerrainHeight(e1.position.x, e1.position.z) + (e1.yOffset || 0);
+          
+          this._enforceBurrowCollision(e2);
+          e2.position.y = this.world.getTerrainHeight(e2.position.x, e2.position.z) + (e2.yOffset || 0);
+        }
+      }
+    }
+
     // ─── COLLECTIBLES ──────────────────────────────────────────
     let coinsCollected = 0;
     let healthCollected = 0;

@@ -716,6 +716,35 @@ export class Crab {
       tierEl.textContent = `${weaponNames[this.weaponType] || 'Pistol'} Lv.${currentLevel}`;
     }
 
+    // Devil Symbol Update (Aura under feet)
+    if (this._devilSymbol) {
+      this._devilSymbol.rotation.z += dt * 0.2; // Slowly rotate
+      
+      if (this._devilSymbolScale < 1.0) {
+        this._devilSymbolScale = Math.min(1.0, this._devilSymbolScale + dt * 1.0);
+        this._devilSymbol.scale.setScalar(this._devilSymbolScale);
+        this._devilSymbol.material.opacity = this._devilSymbolScale;
+      }
+      // (Symbol remains stationary where the crab died as a summoning circle)
+      
+      // Fade out when rage ends and we are alive
+      if (!this.isDead && !this.isRaging && this._devilSymbolScale >= 1.0) {
+        this._devilSymbolFadeOut = true;
+      }
+      
+      if (this._devilSymbolFadeOut) {
+        this._devilSymbol.material.opacity -= dt * 2.0;
+        if (this._devilSymbol.material.opacity <= 0) {
+          this.scene.remove(this._devilSymbol);
+          this._devilSymbol.material.map.dispose();
+          this._devilSymbol.material.dispose();
+          this._devilSymbol.geometry.dispose();
+          this._devilSymbol = null;
+          this._devilSymbolFadeOut = false;
+        }
+      }
+    }
+
     // Camera
     this.cameraController.update(dt, this.position);
   }
@@ -744,6 +773,7 @@ export class Crab {
           // First death — will be intercepted by main.js for resurrection
           this.isDead = true;
           this.deathTimer = 7.0;
+          this._showDevilSymbol(); // Spawn pentagram on the ground
           this._onDeath?.();
         } else {
           // Second death — permanent
@@ -764,6 +794,76 @@ export class Crab {
         }
       }
     }
+  }
+
+  /**
+   * Spawn a glowing red pentagram aura under the crab for the Rage mode
+   */
+  _showDevilSymbol() {
+    if (this._devilSymbol) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.clearRect(0, 0, 512, 512);
+    ctx.strokeStyle = '#ff2222';
+    ctx.lineWidth = 14;
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 25;
+
+    const cx = 256, cy = 256, r = 210;
+    
+    // Outer Circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Pentagram
+    ctx.beginPath();
+    for (let i = 0; i <= 5; i++) {
+      const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Inner markings (small circles)
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      const x = cx + Math.cos(angle) * (r * 0.5);
+      const y = cy + Math.sin(angle) * (r * 0.5);
+      ctx.beginPath();
+      ctx.arc(x, y, 15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      color: 0xff4444
+    });
+
+    // Make it significantly larger than the crab
+    const geo = new THREE.PlaneGeometry(18, 18);
+    this._devilSymbol = new THREE.Mesh(geo, mat);
+    this._devilSymbol.rotation.x = -Math.PI / 2;
+    
+    const groundY = this.world.getTerrainHeight(this.position.x, this.position.z);
+    this._devilSymbol.position.set(this.position.x, groundY + 0.1, this.position.z);
+    
+    this._devilSymbol.material.opacity = 0;
+    this._devilSymbolScale = 0.2;
+    this._devilSymbol.scale.setScalar(this._devilSymbolScale);
+
+    this.scene.add(this._devilSymbol);
   }
 
   /**

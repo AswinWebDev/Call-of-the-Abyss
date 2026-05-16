@@ -816,7 +816,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     sunLightIntensity: 3.0,
     hemiSky:  new THREE.Color(0x87CEEB),
     hemiGround: new THREE.Color(0xc2b280),
-    hemiIntensity: 1.0
+    hemiIntensity: 1.0,
+    oceanTint: new THREE.Color(1.0, 1.0, 1.0)
   };
   // Moonlit-night palette — bright enough that the boss's face & details
   // read clearly, dim enough to feel ominous. Cool silver-blue cast.
@@ -831,7 +832,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     sunLightIntensity: 1.4,             // dimmer than day, but enough for shadows
     hemiSky:  new THREE.Color(0x2a3858),
     hemiGround: new THREE.Color(0x1a1a28),
-    hemiIntensity: 0.55
+    hemiIntensity: 0.55,
+    oceanTint: new THREE.Color(0.7, 0.8, 1.0)
+  };
+  // Red Moon palette for Resurrection Rage — ominous blood red sky and lighting
+  const _stormRage = {
+    top:    new THREE.Color(0x3a0000),  // deep blood red sky
+    horiz:  new THREE.Color(0x8a1010),  // bloody horizon
+    bottom: new THREE.Color(0x400505),  // dark reddish ground
+    sun:    new THREE.Color(0xff4444),  // red moon glow
+    fogColor: new THREE.Color(0x3a1a1a),// reddish-grey fog
+    fogDensity: 0.004,
+    sunLightColor: new THREE.Color(0xff8888), // softer red moonlight
+    sunLightIntensity: 1.6, // reduced intensity
+    hemiSky:  new THREE.Color(0x661a1a), // softer red ambient
+    hemiGround: new THREE.Color(0x2a0a0a), // darker ground
+    hemiIntensity: 0.8,
+    oceanTint: new THREE.Color(1.0, 0.1, 0.1) // Deep blood red tint for ocean
   };
   let _stormBlend = 0; // 0 = calm, 1 = full storm
   let _nextLightningAt = 0;
@@ -848,40 +865,50 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateStorm(dt, time) {
     const stormActive = enemyManager && enemyManager._cthulhuAlive;
-    const target = stormActive ? 1 : 0;
+    const rageActive = crab && crab.isRaging;
+    
+    // Target is 1 if any storm/rage is active, 0 for calm
+    const target = (stormActive || rageActive) ? 1 : 0;
+    
     if (_stormBlend < target) _stormBlend = Math.min(target, _stormBlend + dt * 0.5);
     else if (_stormBlend > target) _stormBlend = Math.max(target, _stormBlend - dt * 0.4);
 
+    // Rage overrides Cthulhu's silver storm
+    const activePalette = rageActive ? _stormRage : _stormDark;
+
     // Sky shader uniform interpolation
     if (engine.skyUniforms) {
-      _lerpColor(engine.skyUniforms.topColor.value,    _stormCalm.top,    _stormDark.top,    _stormBlend);
-      _lerpColor(engine.skyUniforms.horizonColor.value,_stormCalm.horiz,  _stormDark.horiz,  _stormBlend);
-      _lerpColor(engine.skyUniforms.bottomColor.value, _stormCalm.bottom, _stormDark.bottom, _stormBlend);
-      _lerpColor(engine.skyUniforms.sunColor.value,    _stormCalm.sun,    _stormDark.sun,    _stormBlend);
+      _lerpColor(engine.skyUniforms.topColor.value,    _stormCalm.top,    activePalette.top,    _stormBlend);
+      _lerpColor(engine.skyUniforms.horizonColor.value,_stormCalm.horiz,  activePalette.horiz,  _stormBlend);
+      _lerpColor(engine.skyUniforms.bottomColor.value, _stormCalm.bottom, activePalette.bottom, _stormBlend);
+      _lerpColor(engine.skyUniforms.sunColor.value,    _stormCalm.sun,    activePalette.sun,    _stormBlend);
     }
     // Scene fog
     if (engine.scene.fog) {
-      _lerpColor(engine.scene.fog.color, _stormCalm.fogColor, _stormDark.fogColor, _stormBlend);
-      engine.scene.fog.density = _lerp(_stormCalm.fogDensity, _stormDark.fogDensity, _stormBlend);
+      _lerpColor(engine.scene.fog.color, _stormCalm.fogColor, activePalette.fogColor, _stormBlend);
+      engine.scene.fog.density = _lerp(_stormCalm.fogDensity, activePalette.fogDensity, _stormBlend);
     }
     if (engine.scene.background && engine.scene.background.isColor) {
-      _lerpColor(engine.scene.background, _stormCalm.fogColor, _stormDark.fogColor, _stormBlend);
+      _lerpColor(engine.scene.background, _stormCalm.fogColor, activePalette.fogColor, _stormBlend);
     }
-    // Sun (directional) light → moonlight while storming. Keeps shadows
-    // casting but with a cool silver-blue tone instead of warm daylight.
+    // Sun (directional) light
     if (engine.sunLight) {
-      _lerpColor(engine.sunLight.color, _stormCalm.sunLightColor, _stormDark.sunLightColor, _stormBlend);
-      engine.sunLight.intensity = _lerp(_stormCalm.sunLightIntensity, _stormDark.sunLightIntensity, _stormBlend);
+      _lerpColor(engine.sunLight.color, _stormCalm.sunLightColor, activePalette.sunLightColor, _stormBlend);
+      engine.sunLight.intensity = _lerp(_stormCalm.sunLightIntensity, activePalette.sunLightIntensity, _stormBlend);
     }
-    // Hemisphere ambient — also shifts cool so unlit faces aren't black voids
+    // Hemisphere ambient
     if (engine.hemiLight) {
-      _lerpColor(engine.hemiLight.color,       _stormCalm.hemiSky,    _stormDark.hemiSky,    _stormBlend);
-      _lerpColor(engine.hemiLight.groundColor, _stormCalm.hemiGround, _stormDark.hemiGround, _stormBlend);
-      engine.hemiLight.intensity = _lerp(_stormCalm.hemiIntensity, _stormDark.hemiIntensity, _stormBlend);
+      _lerpColor(engine.hemiLight.color,       _stormCalm.hemiSky,    activePalette.hemiSky,    _stormBlend);
+      _lerpColor(engine.hemiLight.groundColor, _stormCalm.hemiGround, activePalette.hemiGround, _stormBlend);
+      engine.hemiLight.intensity = _lerp(_stormCalm.hemiIntensity, activePalette.hemiIntensity, _stormBlend);
+    }
+    // Ocean custom shader tint
+    if (world.ocean && world.ocean.material && world.ocean.material.uniforms.tintColor) {
+      _lerpColor(world.ocean.material.uniforms.tintColor.value, _stormCalm.oceanTint, activePalette.oceanTint, _stormBlend);
     }
 
-    // Lightning scheduler — HEAVY strikes once storm is active
-    if (_stormBlend > 0.4 && stormActive) {
+    // Lightning scheduler — HEAVY strikes once storm is active (but NO lightning during Rage)
+    if (_stormBlend > 0.4 && stormActive && !rageActive) {
       if (_nextLightningAt === 0) _nextLightningAt = time + 0.8 + Math.random() * 1.2;
       if (time >= _nextLightningAt) {
         // Multi-flicker flash sequence (4-6 flickers per strike — denser)

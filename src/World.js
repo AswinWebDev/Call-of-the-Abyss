@@ -214,7 +214,8 @@ export class World {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0.0 },
-        cameraPos: { value: new THREE.Vector3() }
+        cameraPos: { value: new THREE.Vector3() },
+        tintColor: { value: new THREE.Color(1.0, 1.0, 1.0) }
       },
       vertexShader: `
         uniform float time;
@@ -251,6 +252,7 @@ export class World {
       fragmentShader: `
         uniform float time;
         uniform vec3 cameraPos;
+        uniform vec3 tintColor;
 
         varying vec3 vWorldPos;
         varying float vElevation;
@@ -380,7 +382,7 @@ export class World {
           float sss = max(0.0, dot(lightDir, -normal)) * (1.0 - shoreDist) * 0.12;
           baseColor += vec3(0.0, 0.25, 0.18) * sss;
 
-          gl_FragColor = vec4(baseColor + foamColor + vec3(sunGlint), alpha);
+          gl_FragColor = vec4((baseColor + foamColor + vec3(sunGlint)) * tintColor, alpha);
         }
       `,
       transparent: true,
