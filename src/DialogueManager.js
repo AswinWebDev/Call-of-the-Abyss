@@ -54,14 +54,13 @@ export class DialogueManager {
             this.audioManager.ctx.decodeAudioData(buffer)
               .then(decodedData => {
                 this.audioBuffers[filename] = decodedData; // Store decoded AudioBuffer
-                console.log(`✓ Pre-decoded dialogue: ${filename}`);
               })
-              .catch(err => console.error(`Failed to decode ${filename}:`, err));
+              .catch(() => {});
           } else {
             this.audioBuffers[filename] = buffer; // Fallback to ArrayBuffer if ctx not ready
           }
         })
-        .catch(err => console.error(`Failed to preload ${filename}:`, err));
+        .catch(() => {});
     });
   }
 
@@ -151,7 +150,7 @@ export class DialogueManager {
           buffer = await this.audioManager.ctx.decodeAudioData(ab);
           this.audioManager[`dialogue_${filename}`] = buffer;
         } catch (e) {
-          console.warn(`Decode failed for ${filename}`, e);
+          // decode failed
           return;
         }
       }

@@ -295,11 +295,9 @@ export class EnemyManager {
         // Store animation
         if (gltf.animations && gltf.animations.length > 0) {
           this.turtleAnimClip = gltf.animations[0];
-          console.log(`Turtle anim: "${this.turtleAnimClip.name}" — ${this.turtleAnimClip.duration.toFixed(2)}s`);
         }
 
         this._modelLoaded = true;
-        console.log('✓ Turtle model loaded');
 
         // Wait for all other game assets to finish loading, then load the heavy boss model
         const oldOnLoad = THREE.DefaultLoadingManager.onLoad;
@@ -325,11 +323,10 @@ export class EnemyManager {
             this.octopusAnimClip.tracks = this.octopusAnimClip.tracks.filter(track => !track.name.endsWith('.position'));
           }
           this._octopusModelLoaded = true;
-          console.log('✓ Octopus model loaded');
-        }, undefined, (err) => console.error('Failed to load octopus model:', err));
+        }, undefined, () => {});
       },
       undefined,
-      (err) => console.error('Failed to load turtle model:', err)
+      () => {}
     );
   }
 
@@ -356,13 +353,12 @@ export class EnemyManager {
       }
 
       this._bossModelLoaded = true;
-      console.log('✓ Boss zombie monster loaded');
 
       // If test mode and wave already started before load completes
       if (this.testBossMode && this.waveActive && this.bossesToSpawn === 0) {
         this.bossesToSpawn = 1;
       }
-    }, undefined, (err) => console.error('Failed to load boss model:', err));
+    }, undefined, () => {});
   }
 
   /**
@@ -395,8 +391,7 @@ export class EnemyManager {
         this.cthulhuAnimClip = gltf.animations[0];
       }
       this._cthulhuModelLoaded = true;
-      console.log('✓ Cthulhu mega-boss loaded');
-    }, undefined, (err) => console.error('Failed to load Cthulhu model:', err));
+    }, undefined, () => {});
   }
 
   /**
@@ -603,7 +598,6 @@ export class EnemyManager {
          this.dialogue.speak(this.crab.model, "They are bringing the heavy hitters.", 'hero', 4.0, 4.0);
       }
     }
-    console.log(`Wave ${this.currentWave} starting with budget: ${this.waveBudget}`);
 
     // Update HUD
     const waveEl = document.getElementById('wave-number');
@@ -1328,7 +1322,6 @@ export class EnemyManager {
         this.waveActive = false;
         this._waveTimer = this._waveDelay;
         this.waveJustCompleted = true;
-        console.log(`Wave ${this.currentWave} complete!`);
       }
     }
 

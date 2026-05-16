@@ -234,11 +234,11 @@ export class Crab {
       (gltf) => this._onModelLoaded(gltf),
       undefined,
       (err) => {
-        console.warn('Sweet crab failed, falling back to animated_crab.glb', err);
+        // Sweet crab failed, falling back to animated_crab.glb
         loader.load('./models/animated_crab.glb',
           (gltf) => this._onModelLoaded(gltf),
           undefined,
-          (err2) => console.error('Failed to load any crab model', err2)
+          () => {}
         );
       }
     );
@@ -279,10 +279,6 @@ export class Crab {
     if (gltf.animations && gltf.animations.length > 0) {
       this.mixer = new THREE.AnimationMixer(this.model);
 
-      console.log(`Crab: ${gltf.animations.length} animation(s):`);
-      gltf.animations.forEach((clip, i) =>
-        console.log(`  [${i}] "${clip.name}" — ${clip.duration.toFixed(2)}s`)
-      );
 
       // Map by name
       for (const clip of gltf.animations) {
@@ -312,7 +308,6 @@ export class Crab {
     }
 
     this.loaded = true;
-    console.log('✓ Crab loaded and ready');
     this._hasSpokenIntro = false;
   }
 
@@ -397,16 +392,51 @@ export class Crab {
             }
             // Sand burst + knockback on LANDING
             this._onRageLand?.();
+            // Start random rage voice taunts
+            if (this.audio && this.audio.startRageVoiceLines) {
+              this.audio.startRageVoiceLines();
+            }
           }
         } else if (this._ragePhase === 'active') {
           this.rageTimer -= dt;
           if (this.rageTimer <= 0) {
             this.deactivateRage();
           }
+        } else if (this._ragePhase === 'winding_down') {
+          // Gradual wind-down: lerp scale and color back to normal
+          const total = this._rageWindDownDuration || 2.0;
+          const remaining = Math.max(0, this._ragePhaseTimer);
+          const progress = 1.0 - (remaining / total); // 0 → 1
+
+          // Scale: lerp from 3× → 1× (ease-out curve)
+          const eased = 1.0 - Math.pow(1.0 - progress, 2); // quadratic ease-out
+          const currentScale = this._originalScale * (3.0 - 2.0 * eased);
+          if (this.model) this.model.scale.setScalar(currentScale);
+
+          // Color: lerp rage tint back to original
+          for (const entry of this._originalMaterials) {
+            if (entry.mesh && entry.mesh.material) {
+              const mat = entry.mesh.material;
+              // Lerp color from rage red → original
+              mat.color.setHex(0xCC2200);
+              mat.color.lerp(entry.color, eased);
+              // Lerp emissive from rage glow → nothing
+              if (mat.emissive && entry.emissive) {
+                mat.emissive.setHex(0xFF3300);
+                mat.emissive.lerp(entry.emissive, eased);
+                mat.emissiveIntensity = 0.6 * (1.0 - eased);
+              }
+            }
+          }
+
+          if (this._ragePhaseTimer <= 0) {
+            this._finalizeRageEnd();
+          }
         }
       }
-      // During non-active phases, skip normal movement
-      if (this._ragePhase && this._ragePhase !== 'active') {
+      // During non-active phases (ascend/transform/descend), skip normal movement
+      // but winding_down DOES allow normal movement so the player can keep fighting
+      if (this._ragePhase && this._ragePhase !== 'active' && this._ragePhase !== 'winding_down') {
         if (this.model) this.model.position.copy(this.position);
         if (this.mixer) this.mixer.update(dt);
         return;
@@ -1093,21 +1123,40 @@ export class Crab {
   }
 
   deactivateRage() {
-    this.isRaging = false;
-    this._ragePhase = null;
+    // Instead of snapping back instantly, enter a gradual wind-down phase.
+    // The crab stays invulnerable while shrinking and losing the rage tint.
+    this._ragePhase = 'winding_down';
+    this._ragePhaseTimer = 4.0; // 4-second wind-down
+    this._rageWindDownDuration = 4.0;
     this.rageTimer = 0;
 
+    // Audio cues fire immediately so the player knows rage is ending
     if (this.audio && this.audio.playRageEndSound) {
       this.audio.playRageEndSound();
     }
     if (this.audio && this.audio.stopRageMusic) {
       this.audio.stopRageMusic();
     }
+    // Stop rage voice taunts
+    if (this.audio && this.audio.stopRageVoiceLines) {
+      this.audio.stopRageVoiceLines();
+    }
 
-    // Restore scale
+    // Fire callback so main.js can trigger screen flash / camera shake
+    this._onRageWindDown?.();
+  }
+
+  /**
+   * Called when the winding_down phase completes — final cleanup.
+   */
+  _finalizeRageEnd() {
+    this.isRaging = false;
+    this._ragePhase = null;
+
+    // Ensure scale is exactly original
     if (this.model) this.model.scale.setScalar(this._originalScale);
 
-    // Restore colors
+    // Ensure colors are fully restored
     this._clearRageTint();
 
     // Set 50% health

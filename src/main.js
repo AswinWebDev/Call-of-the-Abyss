@@ -1,6 +1,3 @@
-// Console output is left enabled — Wavedash SDK requires it for
-// host-frame communication. Remove this comment if you want to
-// re-enable silencing for non-Wavedash builds.
 
 /**
  * main.js — Call Of The Abyss: A Crab's Last Stand
@@ -62,7 +59,7 @@ let gameState = 'MENU';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const canvas = document.getElementById('game-canvas');
-  if (!canvas) { console.error('Canvas not found'); return; }
+  if (!canvas) { return; }
 
   // ─── WAVEDASH SDK INIT (must be first — dismisses the loading screen) ─
   // initWavedash() calls Wavedash.init() which signals to the Wavedash
@@ -109,7 +106,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   let _resurrectionTimeout = null;
   let _deathTimeout = null;
   crab._onDeath = () => {
-    console.log('💀 Crab died — starting death sequence');
     mouseHeld = false;
 
     if (crab.hasResurrection) {
@@ -130,7 +126,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // After 2 seconds — RESURRECT!
       _resurrectionTimeout = setTimeout(() => {
-        console.log('🔥 RESURRECTION RAGE MODE!');
 
         if (dialogue) {
           dialogue.clearAll();
@@ -155,6 +150,41 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (dialogue) dialogue.isRageLocked = false;
           crab.triggerRageBurst(enemyManager, audio);
           crab._onRageLand = null; // One-shot
+        };
+
+        // Wind-down callback — fires when rage timer expires and the
+        // gradual shrink/de-tint begins. Triggers a screen flash + shake.
+        crab._onRageWindDown = () => {
+          // Orange screen flash (power discharge)
+          const flash = document.getElementById('rage-end-flash');
+          if (flash) {
+            flash.classList.add('flash');
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                flash.classList.remove('flash');
+              });
+            });
+          }
+
+          // Camera shake — decaying rumble over ~0.6s
+          if (engine && engine.camera) {
+            const cam = engine.camera;
+            let shakeTime = 0;
+            const shakeDuration = 0.6;
+            const shakeIntensity = 1.2;
+            const shakeInterval = setInterval(() => {
+              shakeTime += 0.016;
+              if (shakeTime >= shakeDuration) {
+                clearInterval(shakeInterval);
+                return;
+              }
+              const decay = 1.0 - (shakeTime / shakeDuration);
+              cam.position.x += (Math.random() - 0.5) * shakeIntensity * decay;
+              cam.position.y += (Math.random() - 0.5) * shakeIntensity * 0.6 * decay;
+            }, 16);
+          }
+
+          crab._onRageWindDown = null; // One-shot
         };
 
         // Activate rage on the crab (starts ascension animation)
@@ -475,7 +505,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           crab.triggerSandBurst(enemyManager, audio);
         }
       },
-      lookSensitivity: 1.0
+      lookSensitivity: 3.5
     });
   }
 
@@ -623,16 +653,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e && e.preventDefault) e.preventDefault();
 
     // Audio initialization — never let a failure here block game start
-    try { audio.init && audio.init(); } catch (err) { console.warn('audio.init failed', err); }
+    try { audio.init && audio.init(); } catch (err) { }
     try {
       const p = audio.resume && audio.resume();
       if (p && typeof p.catch === 'function') p.catch(() => {});
-    } catch (err) { console.warn('audio.resume failed', err); }
+    } catch (err) { }
 
     // Branch by platform — both paths must always result in PLAYING state
     if (HAS_TOUCH) {
       try { startMobileSession(); } catch (err) {
-        console.error('startMobileSession failed', err);
         // Last-ditch: force the menu off and switch to PLAYING anyway
         mainMenu.classList.add('hidden');
         uiLayer.style.display = 'flex';
@@ -746,7 +775,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.addEventListener('pointerlockerror', () => {
-    console.warn("Pointer lock failed. Please wait a second and try again.");
     btnPlay.textContent = 'TRY AGAIN';
   });
 
@@ -1113,17 +1141,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // ─── RAGE MODE PER-FRAME ────────────────────────────────
       if (crab.isRaging) {
-        // Unlimited ammo — keep it full
-        crab.currentAmmo = crab.maxAmmo;
-        // Update rage bar UI
-        _updateRageBar();
-        // Detect rage just ended (deactivateRage was called by Crab.update)
-        if (!crab.isRaging) {
-          if (weapons) weapons.exitRageMode();
-          _hideRageBar();
+        if (crab._ragePhase === 'winding_down') {
+          // Gradually shrink the rage guns during wind-down
+          const total = crab._rageWindDownDuration || 4.0;
+          const remaining = Math.max(0, crab._ragePhaseTimer);
+          const progress = 1.0 - (remaining / total); // 0 → 1
+          const eased = 1.0 - Math.pow(1.0 - progress, 2);
+          if (weapons && weapons.setRageGunScale) {
+            weapons.setRageGunScale(eased); // shrinks 2.5× → 0×
+          }
+        } else if (crab._ragePhase === 'active') {
+          // Unlimited ammo during active rage
+          crab.currentAmmo = crab.maxAmmo;
+          // Update rage bar UI
+          _updateRageBar();
+          // Detect rage just started winding down this frame
+          if (crab.rageTimer <= 0) {
+            _hideRageBar();
+          }
+        } else {
+          // ascend/transform/descend — keep ammo full
+          crab.currentAmmo = crab.maxAmmo;
         }
       }
-      // Fallback: check if rage ended this frame
+      // Weapons exit once isRaging becomes false (wind-down completed)
       if (!crab.isRaging && weapons && weapons._isRageMode) {
         weapons.exitRageMode();
         _hideRageBar();
@@ -1224,5 +1265,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   requestAnimationFrame(loop);
-  console.log('🦀 Call Of The Abyss: A Crab\'s Last Stand — running');
 });

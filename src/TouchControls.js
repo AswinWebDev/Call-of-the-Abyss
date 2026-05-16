@@ -23,7 +23,7 @@ export class TouchControls {
     // Mobile fingers travel fewer pixels than a desktop mouse, so the
     // base sensitivity is bumped well above 1.0. The acceleration curve in
     // the move handler gives flicks an extra punch on top of this.
-    this.lookSensitivity = opts.lookSensitivity || 3.0;
+    this.lookSensitivity = opts.lookSensitivity || 4.5;
 
     // Per-touch state, keyed by touch identifier
     this._touches = {}; // id → { kind: 'move'|'look', startX, startY, lastX, lastY, baseRect }
@@ -47,7 +47,6 @@ export class TouchControls {
     const pauseBtn = this._el('btn-pause');
 
     if (!moveBase || !lookArea) {
-      console.warn('[TouchControls] mobile UI elements missing');
       return;
     }
 
@@ -102,7 +101,7 @@ export class TouchControls {
           //   (intensity feel — fast swipe rotates much further than a slow
           //   drag of the same total distance, like CoD/PUBG mobile)
           const stepLen = Math.sqrt(dx * dx + dy * dy);
-          const flickBoost = 1 + Math.min(2, stepLen / 30); // 1× → 3×
+          const flickBoost = 1 + Math.min(3, stepLen / 25); // 1× → 4×
 
           // Feed into InputManager's accumulated mouse delta — same path
           // the desktop pointer-lock mousemove uses. mouse.locked is set

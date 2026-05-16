@@ -10,7 +10,7 @@ export class AudioManager {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       // It starts in 'suspended' state without user interaction.
     } catch (e) {
-      console.warn('Web Audio not supported:', e);
+      // Web Audio not supported
     }
 
     this.masterGain = null;
@@ -88,7 +88,6 @@ export class AudioManager {
     this._createScuttleSystem();
 
     this.initialized = true;
-    console.log('✓ Audio initialized');
   }
 
   // ─── OCEAN WAVES ──────────────────────────────────────────────
@@ -388,9 +387,7 @@ export class AudioManager {
         const response = await fetch(files[i]);
         const arrayBuffer = await response.arrayBuffer();
         this.gunBuffers[i] = await this.ctx.decodeAudioData(arrayBuffer);
-        console.log(`✓ Loaded gun sound: ${files[i]}`);
       } catch (e) {
-        console.warn(`Failed to load ${files[i]}:`, e);
       }
     }
 
@@ -400,10 +397,8 @@ export class AudioManager {
       if (resp.ok) {
         const ab = await resp.arrayBuffer();
         this.hitBuffer = await this.ctx.decodeAudioData(ab);
-        console.log('✓ Loaded hit sound');
       }
     } catch (e) {
-      console.warn('Failed to load hit sound:', e);
     }
 
     // Reload sound
@@ -412,10 +407,8 @@ export class AudioManager {
       if (resp.ok) {
         const ab = await resp.arrayBuffer();
         this.reloadBuffer = await this.ctx.decodeAudioData(ab);
-        console.log('✓ Loaded reload sound');
       }
     } catch (e) {
-      console.warn('Failed to load reload sound:', e);
     }
 
     // Load Realistic Enemy Sounds
@@ -434,12 +427,9 @@ export class AudioManager {
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer();
           this[key] = await this.ctx.decodeAudioData(arrayBuffer);
-          console.log(`✓ Loaded enemy sound: ${path}`);
         } else {
-          console.warn(`Missing audio file: ${path}`);
         }
       } catch (e) {
-        console.warn(`Failed to load ${path}:`, e);
       }
     }
   }
@@ -676,7 +666,6 @@ export class AudioManager {
       })
       .catch(err => {
         this[loadKey] = false;
-        console.warn(`Failed to load ${file}:`, err);
       });
   }
 
@@ -814,7 +803,6 @@ export class AudioManager {
         this.playRageResurrectSound();
       }).catch(e => {
         this._rageResurrectLoading = false;
-        console.warn('Failed to load rage resurrect sound', e);
       });
   }
 
@@ -841,7 +829,6 @@ export class AudioManager {
         this.playRageEndSound();
       }).catch(e => {
         this._rageEndLoading = false;
-        console.warn('Failed to load rage end sound', e);
       });
   }
 
@@ -875,7 +862,6 @@ export class AudioManager {
         this.playRageMusic();
       }).catch(e => {
         this._rageMusicLoading = false;
-        console.warn('Failed to load rage music', e);
       });
   }
 
@@ -913,7 +899,6 @@ export class AudioManager {
         this.playRageResurrectSound();
       }).catch(e => {
         this._rageResurrectLoading = false;
-        console.warn('Failed to load rage resurrect sound', e);
       });
   }
 
@@ -1132,11 +1117,9 @@ export class AudioManager {
       .then(buf => {
         this.waveDrumsBuffer = buf;
         this._waveDrumsLoading = false;
-        console.log('✓ Loaded wave drums');
       })
       .catch(e => {
         this._waveDrumsLoading = false;
-        console.warn('Failed to load wave drums:', e);
       });
   }
 
@@ -1442,5 +1425,184 @@ export class AudioManager {
 
     windNoise.start(now);
     windNoise.stop(now + 1.5);
+  }
+
+  // ─── RAGE VOICE LINES ──────────────────────────────────────────────
+  // Random taunts during active rage. Lazy-loaded, no-repeat shuffled,
+  // 4-7s random intervals. Rage music ducks to 50% while dialogue plays.
+
+  /** File list — paths relative to public/ */
+  static RAGE_VOICE_FILES = [
+    'models/dialogues/rage/abyss-vibe.mp3',
+    'models/dialogues/rage/bad-move.mp3',
+    'models/dialogues/rage/bankai.mp3',
+    'models/dialogues/rage/call-an-ambulance.mp3',
+    'models/dialogues/rage/legal-disaster.mp3',
+    'models/dialogues/rage/look-scared.mp3',
+    'models/dialogues/rage/medically-unsafe.mp3',
+    'models/dialogues/rage/somebody-stop-me.mp3',
+    'models/dialogues/rage/this-beach.mp3',
+    'models/dialogues/rage/wo-ho-unstoppable.mp3',
+  ];
+
+  /**
+   * Start the rage voice line loop. Call once when rage becomes active.
+   */
+  startRageVoiceLines() {
+    if (!this.ctx) return;
+    if (this._rageVoiceActive) return; // Already running
+    this._rageVoiceActive = true;
+
+    // Lazy-init the buffer cache and shuffle queue
+    if (!this._rageVoiceBuffers) {
+      this._rageVoiceBuffers = new Map(); // path → AudioBuffer
+      this._rageVoiceLoading = new Set(); // paths currently fetching
+    }
+    this._rageVoiceQueue = this._buildRageShuffleQueue();
+    this._rageVoiceQueueIdx = 0;
+
+    // Schedule the first line after a short delay (let the player enjoy the entrance)
+    this._scheduleNextRageVoice(2.0);
+  }
+
+  /**
+   * Stop the rage voice line loop and any currently playing voice.
+   */
+  stopRageVoiceLines() {
+    this._rageVoiceActive = false;
+    if (this._rageVoiceTimeout) {
+      clearTimeout(this._rageVoiceTimeout);
+      this._rageVoiceTimeout = null;
+    }
+    // Stop currently playing voice and restore music volume
+    if (this._rageVoiceSource) {
+      try { this._rageVoiceSource.stop(); } catch (e) {}
+      this._rageVoiceSource = null;
+    }
+    this._restoreRageMusicVolume();
+  }
+
+  /** Build a shuffled index array (Fisher-Yates) for no-repeat playback */
+  _buildRageShuffleQueue() {
+    const count = AudioManager.RAGE_VOICE_FILES.length;
+    const indices = Array.from({ length: count }, (_, i) => i);
+    for (let i = count - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices;
+  }
+
+  /** Pick the next voice index, reshuffling when exhausted */
+  _nextRageVoiceIndex() {
+    if (this._rageVoiceQueueIdx >= this._rageVoiceQueue.length) {
+      const lastPlayed = this._rageVoiceQueue[this._rageVoiceQueue.length - 1];
+      this._rageVoiceQueue = this._buildRageShuffleQueue();
+      // Ensure the first of the new shuffle isn't the last of the old
+      if (this._rageVoiceQueue[0] === lastPlayed && this._rageVoiceQueue.length > 1) {
+        [this._rageVoiceQueue[0], this._rageVoiceQueue[1]] =
+          [this._rageVoiceQueue[1], this._rageVoiceQueue[0]];
+      }
+      this._rageVoiceQueueIdx = 0;
+    }
+    return this._rageVoiceQueue[this._rageVoiceQueueIdx++];
+  }
+
+  /** Schedule the next voice line after `delaySec` seconds */
+  _scheduleNextRageVoice(delaySec) {
+    if (!this._rageVoiceActive) return;
+    this._rageVoiceTimeout = setTimeout(() => {
+      this._rageVoiceTimeout = null;
+      if (!this._rageVoiceActive) return;
+      this._playNextRageVoice();
+    }, delaySec * 1000);
+  }
+
+  /** Play the next shuffled voice line, lazy-loading if needed */
+  _playNextRageVoice() {
+    if (!this.ctx || !this._rageVoiceActive) return;
+
+    const idx = this._nextRageVoiceIndex();
+    const path = AudioManager.RAGE_VOICE_FILES[idx];
+
+    // If already cached, play immediately
+    if (this._rageVoiceBuffers.has(path)) {
+      this._playRageVoiceBuffer(this._rageVoiceBuffers.get(path));
+      return;
+    }
+
+    // If already loading, skip and schedule next
+    if (this._rageVoiceLoading.has(path)) {
+      this._scheduleNextRageVoice(1.0);
+      return;
+    }
+
+    // Lazy-load the audio file
+    this._rageVoiceLoading.add(path);
+    fetch(`./${path}`)
+      .then(r => r.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(buffer => {
+        this._rageVoiceBuffers.set(path, buffer);
+        this._rageVoiceLoading.delete(path);
+        if (this._rageVoiceActive) {
+          this._playRageVoiceBuffer(buffer);
+        }
+      })
+      .catch(() => {
+        this._rageVoiceLoading.delete(path);
+        // Skip this file, try another
+        if (this._rageVoiceActive) {
+          this._scheduleNextRageVoice(1.0);
+        }
+      });
+  }
+
+  /** Play an AudioBuffer as a rage voice line, ducking music while it plays */
+  _playRageVoiceBuffer(buffer) {
+    if (!this.ctx || !this._rageVoiceActive) return;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 1.2; // Voice lines slightly louder than music
+    src.connect(gain);
+    gain.connect(this.masterGain);
+
+    // Duck the rage music to 50%
+    this._duckRageMusic();
+
+    src.start();
+    this._rageVoiceSource = src;
+
+    // When done: restore music, schedule next with 4-7s random interval
+    src.onended = () => {
+      this._rageVoiceSource = null;
+      this._restoreRageMusicVolume();
+      if (this._rageVoiceActive) {
+        const interval = 4 + Math.random() * 3; // 4-7 seconds
+        this._scheduleNextRageVoice(interval);
+      }
+    };
+  }
+
+  /** Duck rage music volume to 20% smoothly */
+  _duckRageMusic() {
+    if (this._rageMusicGain) {
+      const now = this.ctx.currentTime;
+      this._rageMusicGain.gain.cancelScheduledValues(now);
+      this._rageMusicGain.gain.setValueAtTime(this._rageMusicGain.gain.value, now);
+      this._rageMusicGain.gain.linearRampToValueAtTime(0.2, now + 0.3);
+    }
+  }
+
+  /** Restore rage music volume to 100% smoothly */
+  _restoreRageMusicVolume() {
+    if (this._rageMusicGain && this._rageMusicSource) {
+      const now = this.ctx.currentTime;
+      this._rageMusicGain.gain.cancelScheduledValues(now);
+      this._rageMusicGain.gain.setValueAtTime(this._rageMusicGain.gain.value, now);
+      this._rageMusicGain.gain.linearRampToValueAtTime(1.0, now + 0.5);
+    }
   }
 }
