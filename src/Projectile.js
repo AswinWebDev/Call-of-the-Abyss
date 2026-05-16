@@ -4,9 +4,9 @@
  */
 import * as THREE from 'three';
 
-const POOL_SIZE = 40;
+const POOL_SIZE = 200;
 const MAX_LIFETIME = 3.0;
-const SPLASH_POOL_SIZE = 20;
+const SPLASH_POOL_SIZE = 60;
 const SPLASH_PARTICLE_COUNT = 8;
 
 export class ProjectilePool {

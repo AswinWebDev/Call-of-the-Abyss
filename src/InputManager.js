@@ -57,10 +57,10 @@ export class InputManager {
 
     // Mouse movement (only in pointer lock)
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement) {
+      // Use cached boolean instead of expensive DOM access (document.pointerLockElement)
+      if (this.mouse.locked) {
         this._mouseDeltaX += e.movementX;
         this._mouseDeltaY += e.movementY;
-        this.mouse.locked = true;
       }
     });
 

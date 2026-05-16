@@ -8,7 +8,7 @@ import * as THREE from 'three';
 const WEAPON_TRACKS = {
   pistol: {
     name: 'Pistol',
-    baseFireRate: 3,
+    baseFireRate: 4.5,
     baseDamage: 10,
     baseAmmoPerShot: 2,
     projectileSpeed: 120,
@@ -365,7 +365,7 @@ export class WeaponSystem {
    * Generates continuous penetrating projectiles during Charger's hose mode.
    * Called every frame from main loop.
    */
-  getHoseProjectiles(dt, cameraYaw) {
+  getHoseProjectiles(dt, cameraYaw, crabPosition, camera) {
     if (!this._isFiringHose) return null;
     
     const s = this.stats;
@@ -381,12 +381,10 @@ export class WeaponSystem {
     // Fire ~15 times per second
     this._hoseCooldown = 1.0 / 15.0;
 
-    // Camera forward direction
-    const fwd = new THREE.Vector3(
-      Math.sin(cameraYaw),
-      0,
-      -Math.cos(cameraYaw)
-    );
+    // Focus bullets exactly where the crosshair is looking
+    const camFwd = new THREE.Vector3();
+    camera.getWorldDirection(camFwd);
+    const focalPoint = camera.position.clone().add(camFwd.multiplyScalar(60.0));
 
     const projectiles = [];
     // Per-tick damage. Old hose was 5s with 0.2× scaling; the new 1s window
@@ -396,8 +394,8 @@ export class WeaponSystem {
 
     for (let m = 0; m < this.muzzlePoints.length; m++) {
       const muzzlePos = this.muzzlePoints[m];
-      const dir = fwd.clone();
-      dir.y = 0.03;
+      const dir = focalPoint.clone().sub(muzzlePos).normalize();
+      dir.y += 0.03;
       dir.normalize();
 
       const isCrit = Math.random() < s.critChance;
@@ -419,7 +417,7 @@ export class WeaponSystem {
    * Attempt to fire — returns projectile data array or null
    * For non-charge weapons only.
    */
-  tryFire(crabPosition, cameraYaw, currentAmmo) {
+  tryFire(crabPosition, cameraYaw, currentAmmo, camera) {
     const s = this.stats;
 
     // If this is a charge weapon, don't use instant fire
@@ -442,12 +440,10 @@ export class WeaponSystem {
       this.audio.playShellDropSound();
     }
 
-    // Camera forward direction
-    const fwd = new THREE.Vector3(
-      Math.sin(cameraYaw),
-      0,
-      -Math.cos(cameraYaw)
-    );
+    // Focus bullets exactly where the crosshair is looking
+    const camFwd = new THREE.Vector3();
+    camera.getWorldDirection(camFwd);
+    const focalPoint = camera.position.clone().add(camFwd.multiplyScalar(60.0));
 
     const projectiles = [];
 
@@ -455,7 +451,7 @@ export class WeaponSystem {
       const muzzlePos = this.muzzlePoints[m];
       
       for (let i = 0; i < s.projectilesPerShot; i++) {
-        const dir = fwd.clone();
+        const dir = focalPoint.clone().sub(muzzlePos).normalize();
 
         // Apply spread
         if (s.spread > 0) {
@@ -479,7 +475,7 @@ export class WeaponSystem {
           position: muzzlePos.clone().add(dir.clone().multiplyScalar(0.2)),
           velocity: dir.multiplyScalar(s.projectileSpeed),
           damage: finalDamage,
-          tier: this.currentType === 'shotgun' ? 1 : 0,
+          tier: this._isRageMode ? 3 : (this.currentType === 'shotgun' ? 1 : 0),
           options: { isShotgun: this.currentType === 'shotgun', isCrit, hitScale: this._isRageMode ? 3.0 : 1.0 }
         });
       }

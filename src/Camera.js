@@ -94,6 +94,14 @@ export class Camera {
       }
     }
 
+    // Explicit ground collision check (O(1) math instead of heavy raycasting)
+    if (this.world) {
+      const groundY = this.world.getTerrainHeight(this.targetPos.x, this.targetPos.z);
+      if (this.targetPos.y < groundY + 1.0) {
+        this.targetPos.y = groundY + 1.0;
+      }
+    }
+
     // Spring-damped smooth follow
     const lerpFactor = 1.0 - Math.exp(-this.smoothness * dt);
     this.currentPos.lerp(this.targetPos, lerpFactor);

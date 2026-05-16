@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 3. World
   world = new World(engine.scene);
-  if (world.sand) cameraController.addCollisionObject(world.sand);
+  cameraController.world = world; // Pass world for fast O(1) terrain height checks
 
   // 4. Player
   crab = new Crab(engine.scene, world, input, cameraController);
@@ -1023,7 +1023,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fireResult = weapons.tryFire(
           crab.position,
           aimYaw,
-          crab.currentAmmo
+          crab.currentAmmo,
+          cameraController.camera
         );
 
         if (fireResult) {
@@ -1045,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // ─── CHARGER HOSE MODE ──────────────────────────────────
       if (crab.loaded && crab.model) {
-        const hoseResult = weapons.getHoseProjectiles(dt, cameraController.yaw);
+        const hoseResult = weapons.getHoseProjectiles(dt, cameraController.yaw, crab.position, cameraController.camera);
         if (hoseResult && hoseResult.projectiles && hoseResult.projectiles.length > 0) {
           for (const p of hoseResult.projectiles) {
             projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
