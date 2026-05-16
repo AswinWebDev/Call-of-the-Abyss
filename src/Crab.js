@@ -69,6 +69,17 @@ export class Crab {
     this.deathTimer = 0;          // counts down from 7 once dead
     this._deathTriggered = false; // ensures death sequence runs only once
 
+    // Resurrection rage mode (one-time)
+    this.hasResurrection = true;
+    this.isRaging = false;
+    this.rageTimer = 0;
+    this.rageDuration = 30.0;
+    this._ragePhase = null; // 'ascend', 'transform', 'descend', 'active'
+    this._ragePhaseTimer = 0;
+    this._rageBeamLight = null;
+    this._originalScale = 4.0;
+    this._originalMaterials = []; // cache original colors
+
     // --- Upgrade 3.0 State ---
     this.coins = 0;
     this.totalCoinsCollected = 0; // lifetime stat for death window
@@ -242,6 +253,7 @@ export class Crab {
     const maxDim = Math.max(size.x, size.y, size.z);
     const scale = 4.0 / maxDim;
     this.model.scale.setScalar(scale);
+    this._originalScale = scale; // Save actual scale for rage mode
 
     // Recalculate bounding box after scale
     box.setFromObject(this.model);
@@ -337,6 +349,68 @@ export class Crab {
     // Tick the death countdown so main.js can drive UI off it
     if (this.isDead && this.deathTimer > 0) {
       this.deathTimer = Math.max(0, this.deathTimer - dt);
+    }
+
+    // ─── RAGE MODE PHASES ──────────────────────────────────
+    if (this._ragePhase) {
+      // Only tick rage phases while game is active (pause in menu/upgrades)
+      if (isPlaying) {
+        this._ragePhaseTimer -= dt;
+        if (this._ragePhase === 'ascend') {
+          // Float upward fast
+          this.position.y += 10.0 * dt;
+          if (this._ragePhaseTimer <= 0) {
+            this._ragePhase = 'transform';
+            this._ragePhaseTimer = 1.0;
+            // Scale up (no color change — keep natural look)
+            if (this.model) this.model.scale.setScalar(this._originalScale * 3.0);
+          }
+        } else if (this._ragePhase === 'transform') {
+          // Hold at top, glowing
+          if (this._ragePhaseTimer <= 0) {
+            this._ragePhase = 'descend';
+            this._ragePhaseTimer = 0.4;
+            
+            // Add a burst effect at transformation peak
+            if (this._sandShockwave) {
+              this._sandShockwave.position.copy(this.position);
+              this._sandShockwave.position.y += 0.05;
+              this._sandShockwaveUniforms.uTime.value = 0;
+              this._sandShockwave.scale.setScalar(1.5);
+              this._sandShockwave.visible = true;
+              this.sandBurstActive = true;
+              this.sandBurstTimer = 1.5;
+            }
+          }
+        } else if (this._ragePhase === 'descend') {
+          // Fall back to ground fast
+          const groundY = this.world.getTerrainHeight(this.position.x, this.position.z);
+          this.position.y -= 40.0 * dt;
+          if (this.position.y <= groundY + 0.5 || this._ragePhaseTimer <= 0) {
+            this.position.y = groundY;
+            this._ragePhase = 'active';
+            this.rageTimer = this.rageDuration;
+            // Remove beam light
+            if (this._rageBeamLight) {
+              this.scene.remove(this._rageBeamLight);
+              this._rageBeamLight = null;
+            }
+            // Sand burst + knockback on LANDING
+            this._onRageLand?.();
+          }
+        } else if (this._ragePhase === 'active') {
+          this.rageTimer -= dt;
+          if (this.rageTimer <= 0) {
+            this.deactivateRage();
+          }
+        }
+      }
+      // During non-active phases, skip normal movement
+      if (this._ragePhase && this._ragePhase !== 'active') {
+        if (this.model) this.model.position.copy(this.position);
+        if (this.mixer) this.mixer.update(dt);
+        return;
+      }
     }
 
     // If not playing (e.g. in Main Menu) OR dead, freeze input
@@ -650,6 +724,8 @@ export class Crab {
    * Take damage from enemy attack
    */
   takeDamage(amount) {
+    // Invulnerable during rage mode
+    if (this.isRaging) return;
     this.health = Math.max(0, this.health - amount);
     this._damageFlashTimer = 0.2;
 
@@ -664,9 +740,17 @@ export class Crab {
       // Trigger the death sequence exactly once
       if (!this._deathTriggered) {
         this._deathTriggered = true;
-        this.isDead = true;
-        this.deathTimer = 7.0;
-        this._onDeath?.();
+        if (this.hasResurrection) {
+          // First death — will be intercepted by main.js for resurrection
+          this.isDead = true;
+          this.deathTimer = 7.0;
+          this._onDeath?.();
+        } else {
+          // Second death — permanent
+          this.isDead = true;
+          this.deathTimer = 7.0;
+          this._onDeath?.();
+        }
       }
     } else {
       // Small chance to complain when taking damage
@@ -754,6 +838,18 @@ export class Crab {
     this.sandBurstCooldown = 0;
     this.sandBurstActive = false;
     this.sandBurstTimer = 0;
+    // Resurrection rage reset
+    this.hasResurrection = true;
+    this.isRaging = false;
+    this.rageTimer = 0;
+    this._ragePhase = null;
+    this._ragePhaseTimer = 0;
+    if (this._rageBeamLight) {
+      this.scene.remove(this._rageBeamLight);
+      this._rageBeamLight = null;
+    }
+    if (this.model) this.model.scale.setScalar(this._originalScale);
+    this._clearRageTint();
     this.position.set(0, 2.5, 40);
     this.velocity.set(0, 0, 0);
     this.targetRotationY = Math.PI;
@@ -815,6 +911,116 @@ export class Crab {
     this.totalCoinsCollected += gained;
     const coinEl = document.getElementById('coin-count');
     if (coinEl) coinEl.textContent = this.coins;
+  }
+
+  // ─── RESURRECTION RAGE MODE ─────────────────────────────────────
+
+  activateRage() {
+    this.hasResurrection = false;
+    this.isRaging = true;
+    this.isDead = false;
+    this._deathTriggered = false;
+    this.health = this.maxHealth; // Full health during ascension
+
+    // Cache original material colors
+    this._originalMaterials = [];
+    if (this.model) {
+      this.model.traverse(c => {
+        if (c.isMesh && c.material && c.material.color) {
+          this._originalMaterials.push({
+            mesh: c,
+            color: c.material.color.clone(),
+            emissive: c.material.emissive ? c.material.emissive.clone() : null
+          });
+        }
+      });
+    }
+
+    this._ragePhase = 'ascend';
+    this._ragePhaseTimer = 2.0; // Float up slowly
+
+    if (this.audio && this.audio.playRageMusic) {
+      this.audio.playRageMusic();
+    }
+
+    // Create subtle beam light
+    const beamGeo = new THREE.CylinderGeometry(1.5, 4, 40, 8, 1, true);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xFFFFCC,
+      transparent: true,
+      opacity: 0.15,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this._rageBeamLight = new THREE.Mesh(beamGeo, beamMat);
+    this._rageBeamLight.position.copy(this.position);
+    this._rageBeamLight.position.y += 20;
+    this.scene.add(this._rageBeamLight);
+
+    const glow = new THREE.PointLight(0xFFFFCC, 4, 30);
+    glow.position.set(0, 10, 0);
+    this._rageBeamLight.add(glow);
+  }
+
+  deactivateRage() {
+    this.isRaging = false;
+    this._ragePhase = null;
+    this.rageTimer = 0;
+
+    if (this.audio && this.audio.playRageEndSound) {
+      this.audio.playRageEndSound();
+    }
+    if (this.audio && this.audio.stopRageMusic) {
+      this.audio.stopRageMusic();
+    }
+
+    // Restore scale
+    if (this.model) this.model.scale.setScalar(this._originalScale);
+
+    // Restore colors
+    this._clearRageTint();
+
+    // Set 50% health
+    this.health = Math.round(this.maxHealth * 0.5);
+
+    // Remove beam if still present
+    if (this._rageBeamLight) {
+      this.scene.remove(this._rageBeamLight);
+      this._rageBeamLight = null;
+    }
+
+    // Update HUD
+    const healthFill = document.getElementById('health-fill');
+    if (healthFill) healthFill.style.width = `${(this.health / this.maxHealth) * 100}%`;
+    const healthNum = document.getElementById('health-count');
+    if (healthNum) healthNum.textContent = String(Math.round(this.health));
+  }
+
+  _applyRageTint() {
+    if (!this.model) return;
+    this.model.traverse(c => {
+      if (c.isMesh && c.material) {
+        c.material.color.setHex(0xCC2200);
+        if (c.material.emissive) {
+          c.material.emissive.setHex(0xFF3300);
+          c.material.emissiveIntensity = 0.6;
+        }
+      }
+    });
+  }
+
+  _clearRageTint() {
+    for (const entry of this._originalMaterials) {
+      if (entry.mesh && entry.mesh.material) {
+        entry.mesh.material.color.copy(entry.color);
+        if (entry.emissive && entry.mesh.material.emissive) {
+          entry.mesh.material.emissive.copy(entry.emissive);
+          entry.mesh.material.emissiveIntensity = 0;
+        }
+      }
+    }
+    this._originalMaterials = [];
   }
 
   // ─── ABILITIES ──────────────────────────────────────────────────
@@ -899,5 +1105,55 @@ export class Crab {
     }
     
     return true;
+  }
+
+  /**
+   * Massive rage resurrection burst — 3× visual, pushes ALL enemies far back
+   */
+  triggerRageBurst(enemyManager, audio) {
+    // Play audio
+    if (audio && audio.initialized && audio.playSandBurstSound) {
+      audio.playSandBurstSound();
+    }
+
+    // Use exactly the same visual logic as normal sand burst but scaled up slightly
+    const posArr = this.sandParticleSystem.geometry.attributes.position.array;
+    for (let i = 0; i < this.sandParticleCount; i++) {
+      posArr[i*3] = this.position.x + (Math.random() - 0.5) * 1.5;
+      posArr[i*3+1] = this.position.y + 0.2 + (Math.random() * 0.8);
+      posArr[i*3+2] = this.position.z + (Math.random() - 0.5) * 1.5;
+
+      const theta = Math.random() * Math.PI * 2;
+      const phi = (Math.random() - 0.2) * 0.5;
+      const speed = (25 + Math.random() * 25) * 1.5; // Slightly faster for bigger spread
+      this.sandParticleVelocities[i].set(
+        Math.cos(theta) * speed,
+        Math.sin(phi) * speed,
+        Math.sin(theta) * speed
+      );
+    }
+    this.sandParticleSystem.geometry.attributes.position.needsUpdate = true;
+
+    // Big shockwave
+    if (this._sandShockwave) {
+      this._sandShockwave.position.copy(this.position);
+      this._sandShockwave.position.y += 0.05;
+      this._sandShockwaveUniforms.uTime.value = 0;
+      this._sandShockwave.scale.setScalar(2.0); // 2× bigger shockwave ring
+      this._sandShockwave.visible = true;
+    }
+    this.sandBurstActive = true;
+    this.sandBurstTimer = 1.5; // MUST be 1.5 to match update loop logic and shader
+
+    // Push ALL enemies back (half radius knockback)
+    if (enemyManager) {
+      for (const enemy of enemyManager.enemies) {
+        if (enemy.state === 'dead' || enemy.state === 'dying') continue;
+        const dir = enemy.position.clone().sub(this.position).normalize();
+        dir.y = 0;
+        enemy._knockbackVelocity = dir.multiplyScalar(40.0); // Halved pushback
+        enemy._staggerTimer = 3.0;
+      }
+    }
   }
 }

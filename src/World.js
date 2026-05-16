@@ -775,11 +775,11 @@ export class World {
         if (dB < 35) continue;
         const y = this.getTerrainHeight(x, z);
         const sc = 2.0 + Math.random() * 5.0;
-        // Sink 20% of height below ground so tilted bases stay hidden
-        tree.position.set(x, y - sc * 0.6, z);
+        tree.position.set(x, y - 1.0, z);
         tree.rotation.y = Math.random() * Math.PI * 2;
-        tree.rotation.z = (Math.random() - 0.5) * 1.5;
-        tree.rotation.x = (Math.random() - 0.5) * 1.5;
+        // Natural slight lean only (max ~12°) — not wild tilts
+        tree.rotation.z = (Math.random() - 0.5) * 0.2;
+        tree.rotation.x = (Math.random() - 0.5) * 0.2;
         tree.scale.setScalar(sc);
         tree.traverse(child => {
           if (child.isMesh) {

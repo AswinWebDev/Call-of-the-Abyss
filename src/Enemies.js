@@ -821,7 +821,7 @@ export class EnemyManager {
       this._octopusSpokeThisWave = true;
       this.spawnDialogueQueue.push({
         entity: enemy,
-        text: "You hear it too… don’t you The call of the abyss… it calls for you.",
+        text: "You hear it too… don't you The call of the abyss… it calls for you.",
         heightOffset: 15.0
       });
     }
@@ -1656,7 +1656,7 @@ export class EnemyManager {
           }
 
           // Enter attack range
-          const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 8.0 : enemy.attackRange;
+          const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 16.0 : enemy.attackRange;
           if (distToTarget < effectiveAttackRange) {
             enemy.state = TURTLE_STATE.ATTACKING;
             enemy._attackTimer = 0;
@@ -1700,7 +1700,7 @@ export class EnemyManager {
 
           // Deal damage at peak of lunge
           if (enemy._attackTimer > 0.25 && enemy._attackTimer < 0.35) {
-            const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 5.0 : enemy.attackRange + 2;
+            const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 12.0 : enemy.attackRange + 2;
             if (distToTarget < effectiveAttackRange) {
               if (targetEntity && targetEntity.health !== undefined) {
                 targetEntity.health -= enemy.attackDamage;

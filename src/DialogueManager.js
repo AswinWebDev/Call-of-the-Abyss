@@ -82,7 +82,8 @@ export class DialogueManager {
     // Cthulhu cinematic moments (rise/death) — silence ALL dialogue
     // (monster AND hero) while their echoes are playing.
     if (this.audioManager && (this.audioManager._cthuluRisesActive ||
-                              this.audioManager._cthuluDiesActive)) {
+                              this.audioManager._cthuluDiesActive ||
+                              this.isRageLocked)) {
       return false;
     }
 
@@ -188,6 +189,15 @@ export class DialogueManager {
       gain.connect(this.audioManager.masterGain);
     }
     src.start();
+  }
+
+  clearAll() {
+    this.monsterCooldown = 0;
+    this.heroCooldown = 0;
+    for (const d of this.activeDialogues) {
+      if (d.el) d.el.remove();
+    }
+    this.activeDialogues = [];
   }
 
   update(dt) {

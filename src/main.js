@@ -103,75 +103,162 @@ document.addEventListener('DOMContentLoaded', async () => {
   crab.audio = audio;       // Inject (used for splash + reload sounds)
   
   // ─── DEATH SEQUENCE HOOK ───────────────────────────────────
-  // Fired once when crab.health hits 0. Plays an echo'd Cthulhu line,
-  // silences the ambient audio, and starts the 7s darkening overlay.
+  // Fired once when crab.health hits 0. First death triggers resurrection
+  // rage mode; second death is permanent.
   let deathWindowShown = false;
+  let _resurrectionTimeout = null;
+  let _deathTimeout = null;
   crab._onDeath = () => {
     console.log('💀 Crab died — starting death sequence');
     mouseHeld = false;
-    gameState = 'DEAD';
 
-    // Pick one of the two death lines at random
-    const deathLines = [
-      'belong-to-the-deep.mp3',
-      'sink-without-fear.mp3'
-    ];
-    const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
+    if (crab.hasResurrection) {
+      // ─── FIRST DEATH: RESURRECTION ─────────────────────────
+      gameState = 'DEAD'; // Temporarily dead during the 2s animation
 
-    // Resolve preloaded buffer (DialogueManager preloads + AudioManager decodes)
-    const resolveAndPlay = () => {
+      // Start the death overlay (will be cancelled at resurrection)
+      const deathOverlay = document.getElementById('death-overlay');
+      if (deathOverlay) deathOverlay.classList.add('dying');
+
+      // Play death sound
+      const deathLines = ['belong-to-the-deep.mp3', 'sink-without-fear.mp3'];
+      const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
       const raw = dialogue && dialogue.audioBuffers ? dialogue.audioBuffers[chosen] : null;
       if (raw && raw instanceof AudioBuffer) {
         audio.playDeathDialogueWithEcho(raw);
-      } else if (raw && audio && audio.ctx) {
-        // ArrayBuffer fallback — decode then play
-        audio.ctx.decodeAudioData(raw.slice(0)).then(decoded => {
-          audio.playDeathDialogueWithEcho(decoded);
-        }).catch(() => {});
-      }
-    };
-    resolveAndPlay();
-
-    // Trigger the 7-second darkening animation
-    const deathOverlay = document.getElementById('death-overlay');
-    if (deathOverlay) deathOverlay.classList.add('dying');
-
-    // Fire-and-forget score submission as soon as the player dies.
-    // We don't block on it — even if the network is slow, the death
-    // window appears at 7s and the leaderboard refreshes when ready.
-    const runStats = {
-      wave: enemyManager.currentWave || 0,
-      kills: enemyManager.totalKills || 0,
-      coins: crab.totalCoinsCollected || 0
-    };
-    const submission = submitScore(runStats);
-
-    // After 7s, show the Death Window with run stats
-    setTimeout(() => {
-      if (deathWindowShown) return;
-      deathWindowShown = true;
-      try { document.exitPointerLock(); } catch (e) {}
-
-      const waveEl = document.getElementById('death-wave');
-      const killsEl = document.getElementById('death-kills');
-      const coinsEl = document.getElementById('death-coins');
-      if (waveEl) waveEl.textContent = runStats.wave;
-      if (killsEl) killsEl.textContent = runStats.kills;
-      if (coinsEl) coinsEl.textContent = runStats.coins;
-
-      // Personalize the subtitle with the player's name
-      const subtitleEl = document.querySelector('#death-window .death-subtitle');
-      if (subtitleEl && window.playerName) {
-        subtitleEl.textContent = `${window.playerName}, the abyss has claimed you`;
       }
 
-      const dw = document.getElementById('death-window');
-      if (dw) dw.classList.add('visible');
+      // After 2 seconds — RESURRECT!
+      _resurrectionTimeout = setTimeout(() => {
+        console.log('🔥 RESURRECTION RAGE MODE!');
 
-      // Render leaderboard after submission resolves so this run is included
-      submission.then(() => renderLeaderboard('death-leaderboard', 3));
-    }, 7000);
+        if (dialogue) {
+          dialogue.clearAll();
+          dialogue.isRageLocked = true;
+        }
+
+        // Stop the echoing death dialogue
+        if (audio && audio.stopDeathDialogueWithEcho) {
+          audio.stopDeathDialogueWithEcho();
+        }
+
+        // Play resurrect voice line
+        if (audio && audio.playRageResurrectSound) {
+          audio.playRageResurrectSound();
+        }
+
+        // Cancel death overlay
+        if (deathOverlay) deathOverlay.classList.remove('dying');
+
+        // Set up landing callback — sand burst fires when crab hits the ground
+        crab._onRageLand = () => {
+          if (dialogue) dialogue.isRageLocked = false;
+          crab.triggerRageBurst(enemyManager, audio);
+          crab._onRageLand = null; // One-shot
+        };
+
+        // Activate rage on the crab (starts ascension animation)
+        crab.activateRage();
+
+        // Switch weapons to rage mode (4 guns, 2× fire rate)
+        if (weapons) weapons.enterRageMode();
+
+        // Create rage bar UI
+        _createRageBar();
+
+        // Return game state to playing
+        gameState = 'PLAYING';
+
+        // Re-lock pointer
+        try { canvas.requestPointerLock(); } catch(e) {}
+      }, 2000);
+
+    } else {
+      // ─── SECOND DEATH: PERMANENT ───────────────────────────
+      gameState = 'DEAD';
+
+      const deathLines = ['belong-to-the-deep.mp3', 'sink-without-fear.mp3'];
+      const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
+      const resolveAndPlay = () => {
+        const raw = dialogue && dialogue.audioBuffers ? dialogue.audioBuffers[chosen] : null;
+        if (raw && raw instanceof AudioBuffer) {
+          audio.playDeathDialogueWithEcho(raw);
+        } else if (raw && audio && audio.ctx) {
+          audio.ctx.decodeAudioData(raw.slice(0)).then(decoded => {
+            audio.playDeathDialogueWithEcho(decoded);
+          }).catch(() => {});
+        }
+      };
+      resolveAndPlay();
+
+      const deathOverlay = document.getElementById('death-overlay');
+      if (deathOverlay) deathOverlay.classList.add('dying');
+
+      const runStats = {
+        wave: enemyManager.currentWave || 0,
+        kills: enemyManager.totalKills || 0,
+        coins: crab.totalCoinsCollected || 0
+      };
+      const submission = submitScore(runStats);
+
+      _deathTimeout = setTimeout(() => {
+        if (deathWindowShown) return;
+        deathWindowShown = true;
+        try { document.exitPointerLock(); } catch (e) {}
+
+        const waveEl = document.getElementById('death-wave');
+        const killsEl = document.getElementById('death-kills');
+        const coinsEl = document.getElementById('death-coins');
+        if (waveEl) waveEl.textContent = runStats.wave;
+        if (killsEl) killsEl.textContent = runStats.kills;
+        if (coinsEl) coinsEl.textContent = runStats.coins;
+
+        const subtitleEl = document.querySelector('#death-window .death-subtitle');
+        if (subtitleEl && window.playerName) {
+          subtitleEl.textContent = `${window.playerName}, the abyss has claimed you`;
+        }
+
+        const dw = document.getElementById('death-window');
+        if (dw) dw.classList.add('visible');
+
+        submission.then(() => renderLeaderboard('death-leaderboard', 3));
+      }, 7000);
+    }
   };
+
+  // ─── RAGE BAR UI ────────────────────────────────────────────
+  function _createRageBar() {
+    let bar = document.getElementById('rage-bar-container');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'rage-bar-container';
+      bar.style.cssText = 'position:fixed; top:24px; left:50%; transform:translateX(-50%); width:320px; height:10px; background:rgba(0,0,0,0.6); border-radius:5px; z-index:20; pointer-events:none; border:1px solid rgba(255,50,0,0.5);';
+      const fill = document.createElement('div');
+      fill.id = 'rage-bar-fill';
+      fill.style.cssText = 'height:100%; width:100%; background:linear-gradient(90deg, #FF2200, #FF6600, #FF2200); border-radius:5px; transition:width 0.1s linear;';
+      bar.appendChild(fill);
+      const label = document.createElement('div');
+      label.style.cssText = 'position:absolute; top:-18px; left:50%; transform:translateX(-50%); color:#FF4400; font-size:12px; font-weight:bold; letter-spacing:2px; text-transform:uppercase; text-shadow:0 0 8px #FF2200;';
+      label.textContent = '🔥 RAGE';
+      bar.appendChild(label);
+      document.body.appendChild(bar);
+    }
+    bar.style.display = 'block';
+  }
+
+  function _updateRageBar() {
+    if (!crab.isRaging || crab._ragePhase !== 'active') return;
+    const fill = document.getElementById('rage-bar-fill');
+    if (fill) {
+      const pct = Math.max(0, (crab.rageTimer / crab.rageDuration) * 100);
+      fill.style.width = `${pct}%`;
+    }
+  }
+
+  function _hideRageBar() {
+    const bar = document.getElementById('rage-bar-container');
+    if (bar) bar.style.display = 'none';
+  }
 
   weapons = new WeaponSystem(engine.scene, audio);
   projectiles = new ProjectilePool(engine.scene);
@@ -432,6 +519,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 4. Reset death-window flag so a future death triggers it again
     deathWindowShown = false;
+    // Clear any pending resurrection timeout
+    if (_resurrectionTimeout) { clearTimeout(_resurrectionTimeout); _resurrectionTimeout = null; }
+    if (_deathTimeout) { clearTimeout(_deathTimeout); _deathTimeout = null; }
+    // Exit rage mode if active
+    if (weapons && weapons._isRageMode) weapons.exitRageMode();
+    _hideRageBar();
 
     // 5. Show HUD, lock pointer (or skip on touch), resume play
     uiLayer.style.display = 'flex';
@@ -680,15 +773,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           crab.currentAmmo
         );
         if (fireResult) {
-          crab.currentAmmo -= fireResult.ammoCost;
-          for (const p of fireResult.projectiles) {
-            projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
-          }
-        } else if (crab.currentAmmo < weapons.stats.ammoPerShot) {
-          if (dialogue && crab.model) {
-            if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
-              crab._lastLowWaterVoice = Date.now();
-              dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+          if (fireResult.outOfAmmo) {
+            if (dialogue && crab.model) {
+              if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                crab._lastLowWaterVoice = Date.now();
+                dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+              }
+            }
+          } else {
+            crab.currentAmmo -= fireResult.ammoCost;
+            for (const p of fireResult.projectiles) {
+              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
             }
           }
         }
@@ -871,9 +966,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             crab.currentAmmo
           );
           if (releaseResult) {
-            crab.currentAmmo -= releaseResult.ammoCost;
-            for (const p of releaseResult.projectiles) {
-              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
+            if (releaseResult.outOfAmmo) {
+              if (dialogue && crab.model && !crab.isRaging) {
+                if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                  crab._lastLowWaterVoice = Date.now();
+                  dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+                }
+              }
+            } else {
+              crab.currentAmmo -= releaseResult.ammoCost;
+              for (const p of releaseResult.projectiles) {
+                projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
+              }
             }
           }
         }
@@ -889,15 +993,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
 
         if (fireResult) {
-          crab.currentAmmo -= fireResult.ammoCost;
-          for (const p of fireResult.projectiles) {
-            projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
-          }
-        } else if (crab.currentAmmo < weapons.stats.ammoPerShot && !weapons.stats.isCharge) {
-          if (dialogue && crab.model) {
-            if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
-              crab._lastLowWaterVoice = Date.now();
-              dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+          if (fireResult.outOfAmmo) {
+            if (!weapons.stats.isCharge && dialogue && crab.model && !crab.isRaging) {
+              if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                crab._lastLowWaterVoice = Date.now();
+                dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+              }
+            }
+          } else {
+            crab.currentAmmo -= fireResult.ammoCost;
+            for (const p of fireResult.projectiles) {
+              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
             }
           }
         }
@@ -969,6 +1075,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Enemies AI
       const combatResult = enemyManager.update(dt, time, crab.position, engine.camera, burrowManager, gameState === 'PLAYING', enemyProjectiles);
+
+      // ─── RAGE MODE PER-FRAME ────────────────────────────────
+      if (crab.isRaging) {
+        // Unlimited ammo — keep it full
+        crab.currentAmmo = crab.maxAmmo;
+        // Update rage bar UI
+        _updateRageBar();
+        // Detect rage just ended (deactivateRage was called by Crab.update)
+        if (!crab.isRaging) {
+          if (weapons) weapons.exitRageMode();
+          _hideRageBar();
+        }
+      }
+      // Fallback: check if rage ended this frame
+      if (!crab.isRaging && weapons && weapons._isRageMode) {
+        weapons.exitRageMode();
+        _hideRageBar();
+      }
 
       // ─── WAVE BACKGROUND DRUMS ──────────────────────────────
       const MUSIC_ENABLED = true;

@@ -789,6 +789,134 @@ export class AudioManager {
     src.start();
   }
 
+  // ─── RAGE SOUNDS ──────────────────────────────────────────────
+
+  playRageResurrectSound() {
+    if (!this.ctx) return;
+    if (this._rageResurrectBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._rageResurrectBuffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 1.0;
+      src.connect(gain);
+      gain.connect(this.masterGain);
+      src.start();
+      return;
+    }
+    if (this._rageResurrectLoading) return;
+    this._rageResurrectLoading = true;
+    fetch("./sounds/Back from the deep. now it's YOUR turn.mp3")
+      .then(r => r.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(b => {
+        this._rageResurrectBuffer = b;
+        this._rageResurrectLoading = false;
+        this.playRageResurrectSound();
+      }).catch(e => {
+        this._rageResurrectLoading = false;
+        console.warn('Failed to load rage resurrect sound', e);
+      });
+  }
+
+  playRageEndSound() {
+    if (!this.ctx) return;
+    if (this._rageEndBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._rageEndBuffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 1.0;
+      src.connect(gain);
+      gain.connect(this.masterGain);
+      src.start();
+      return;
+    }
+    if (this._rageEndLoading) return;
+    this._rageEndLoading = true;
+    fetch("./sounds/Alright Alright … maybe I overdid that.mp3")
+      .then(r => r.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(b => {
+        this._rageEndBuffer = b;
+        this._rageEndLoading = false;
+        this.playRageEndSound();
+      }).catch(e => {
+        this._rageEndLoading = false;
+        console.warn('Failed to load rage end sound', e);
+      });
+  }
+
+  playRageMusic() {
+    if (!this.ctx) return;
+    if (this._rageMusicSource) return; // Already playing
+
+    if (this._rageMusicBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._rageMusicBuffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 1.0; // Full volume
+      src.connect(gain);
+      gain.connect(this.masterGain);
+      
+      const now = this.ctx.currentTime;
+      src.start(now, 30.0); // Start at 30 seconds
+      this._rageMusicSource = src;
+      this._rageMusicGain = gain;
+      return;
+    }
+
+    if (this._rageMusicLoading) return;
+    this._rageMusicLoading = true;
+    fetch("./sounds/alec_koff-epic-drums-tribal.ogg")
+      .then(r => r.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(b => {
+        this._rageMusicBuffer = b;
+        this._rageMusicLoading = false;
+        this.playRageMusic();
+      }).catch(e => {
+        this._rageMusicLoading = false;
+        console.warn('Failed to load rage music', e);
+      });
+  }
+
+  stopRageMusic() {
+    if (this._rageMusicSource && this._rageMusicGain) {
+      const now = this.ctx.currentTime;
+      this._rageMusicGain.gain.linearRampToValueAtTime(0, now + 1.0);
+      try {
+        this._rageMusicSource.stop(now + 1.0);
+      } catch (e) {}
+      this._rageMusicSource = null;
+    }
+  }
+
+  playRageResurrectSound() {
+    if (!this.ctx) return;
+    if (this._rageResurrectBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._rageResurrectBuffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 1.4; // Loud and clear
+      src.connect(gain);
+      gain.connect(this.masterGain);
+      src.start();
+      return;
+    }
+    if (this._rageResurrectLoading) return;
+    this._rageResurrectLoading = true;
+    fetch("./sounds/Back from the deep… now it’s YOUR turn.mp3")
+      .then(r => r.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(b => {
+        this._rageResurrectBuffer = b;
+        this._rageResurrectLoading = false;
+        this.playRageResurrectSound();
+      }).catch(e => {
+        this._rageResurrectLoading = false;
+        console.warn('Failed to load rage resurrect sound', e);
+      });
+  }
+
   /**
    * Enemy death — using real MP3 files
    */
@@ -1131,6 +1259,9 @@ export class AudioManager {
     feedback.connect(delay);
 
     src.start(now);
+    
+    // Store nodes so we can stop them early if needed
+    this._deathEchoNodes = { src, dryGain, wetGain, delay, feedback };
 
     // After dialogue finishes, allow echoes to ring out then drop wet to silence
     const dur = buffer.duration;
@@ -1139,6 +1270,19 @@ export class AudioManager {
 
     this._deathAudioActive = true;
     return dur;
+  }
+
+  stopDeathDialogueWithEcho() {
+    if (this._deathEchoNodes) {
+      const { src, dryGain, wetGain, delay, feedback } = this._deathEchoNodes;
+      try { src.stop(); } catch(e){}
+      try { dryGain.disconnect(); } catch(e){}
+      try { wetGain.disconnect(); } catch(e){}
+      try { delay.disconnect(); } catch(e){}
+      try { feedback.disconnect(); } catch(e){}
+      this._deathEchoNodes = null;
+    }
+    this._deathAudioActive = false;
   }
 
   /**
