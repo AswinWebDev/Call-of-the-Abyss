@@ -693,7 +693,7 @@ export class World {
         });
         this.scene.add(tree);
         this.trees.push(tree);
-        if (x > -80) this.colliders.push({ x, z, radius: scale * 0.35 });
+        this.colliders.push({ x, z, radius: scale * 0.15 });
       };
 
       // ── Burrow surroundings — open space, just a few trees on flanks ──

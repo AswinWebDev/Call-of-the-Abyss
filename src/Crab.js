@@ -50,7 +50,7 @@ export class Crab {
     
     // Abilities
     this.sandBurstCooldown = 0;
-    this.sandBurstCooldownMax = 15.0; // Level 1 default
+    this.sandBurstCooldownMax = 7.5; // Level 1 default (halved from 15)
     this._initSandBurstParticles();
     this.isInWater = false;
 
@@ -718,12 +718,41 @@ export class Crab {
 
     // Devil Symbol Update (Aura under feet)
     if (this._devilSymbol) {
-      this._devilSymbol.rotation.z += dt * 0.2; // Slowly rotate
+      this._devilSymbol.rotation.y -= dt * 0.2; // Slowly rotate
       
       if (this._devilSymbolScale < 1.0) {
         this._devilSymbolScale = Math.min(1.0, this._devilSymbolScale + dt * 1.0);
         this._devilSymbol.scale.setScalar(this._devilSymbolScale);
         this._devilSymbol.material.opacity = this._devilSymbolScale;
+      }
+      
+      // Conformal terrain mapping to prevent cutoff on uneven surfaces
+      if (this._devilSymbol.geometry.attributes.position) {
+        const posAttr = this._devilSymbol.geometry.attributes.position;
+        const scale = this._devilSymbolScale;
+        const worldX = this._devilSymbol.position.x;
+        const worldZ = this._devilSymbol.position.z;
+        const baseY = this._devilSymbol.position.y;
+        
+        const cosR = Math.cos(this._devilSymbol.rotation.y);
+        const sinR = Math.sin(this._devilSymbol.rotation.y);
+        
+        for (let i = 0; i < posAttr.count; i++) {
+           const localX = posAttr.getX(i);
+           const localZ = posAttr.getZ(i);
+           
+           // Rotate local coordinates to find actual world offset
+           const rotX = localX * cosR + localZ * sinR;
+           const rotZ = -localX * sinR + localZ * cosR;
+           
+           const wx = worldX + rotX * scale;
+           const wz = worldZ + rotZ * scale;
+           const terrainY = this.world.getTerrainHeight(wx, wz);
+           
+           // Set local Y to the height difference plus a tiny offset to prevent z-fighting
+           posAttr.setY(i, (terrainY - baseY + 0.15) / scale); 
+        }
+        posAttr.needsUpdate = true;
       }
       // (Symbol remains stationary where the crab died as a summoning circle)
       
@@ -851,13 +880,13 @@ export class Crab {
       color: 0xff4444
     });
 
-    // Make it significantly larger than the crab
-    const geo = new THREE.PlaneGeometry(18, 18);
+    // Make it significantly larger than the crab and conform to terrain
+    const geo = new THREE.PlaneGeometry(35, 35, 16, 16);
+    geo.rotateX(-Math.PI / 2);
     this._devilSymbol = new THREE.Mesh(geo, mat);
-    this._devilSymbol.rotation.x = -Math.PI / 2;
     
     const groundY = this.world.getTerrainHeight(this.position.x, this.position.z);
-    this._devilSymbol.position.set(this.position.x, groundY + 0.1, this.position.z);
+    this._devilSymbol.position.set(this.position.x, groundY, this.position.z);
     
     this._devilSymbol.material.opacity = 0;
     this._devilSymbolScale = 0.2;
@@ -1133,12 +1162,12 @@ export class Crab {
     // Scale stats — radii doubled (huge AoE intentional given long cooldown)
     let radius = 30.0;
     let damage = 25;
-    let cooldown = 15.0;
+    let cooldown = 7.5; // Halved from 15.0
 
     if (sbLevel >= 2) radius = 40.0;
-    if (sbLevel >= 3) cooldown = 12.0;
+    if (sbLevel >= 3) cooldown = 6.0; // Halved from 12.0
     if (sbLevel >= 4) damage = 50;
-    if (sbLevel >= 5) { radius = 50.0; damage = 75; cooldown = 10.0; }
+    if (sbLevel >= 5) { radius = 50.0; damage = 75; cooldown = 5.0; } // Halved from 10.0
 
     this.sandBurstCooldownMax = cooldown;
     this.sandBurstCooldown = this.sandBurstCooldownMax;
