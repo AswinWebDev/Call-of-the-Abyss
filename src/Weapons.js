@@ -96,6 +96,9 @@ export class WeaponSystem {
 
     this._fireCooldown = 0;
     this._muzzleFlashTimer = 0;
+    this._isRageMode = false;
+    this._preRageType = null;
+    this._preRageLevel = null;
 
     // Charge system
     this._isCharging = false;
@@ -142,6 +145,13 @@ export class WeaponSystem {
    * Switch to a specific weapon type and level
    */
   setWeapon(weaponType, weaponLevel) {
+    if (this._isRageMode) {
+      this._preRageType = weaponType;
+      this._preRageLevel = weaponLevel;
+      console.log(`🔫 Weapon upgraded during rage: ${weaponType} Lv.${weaponLevel}`);
+      return;
+    }
+
     this.currentType = weaponType;
     this.currentLevel = weaponLevel;
     this._isCharging = false;
@@ -324,6 +334,7 @@ export class WeaponSystem {
          try { this.audio._currentChargeOsc.stop(); this.audio._currentChargeLfo.stop(); } catch(e){}
          this.audio._currentChargeOsc = null;
       }
+      if (currentAmmo < s.ammoPerShot) return { outOfAmmo: true };
       return null;
     }
 
@@ -415,9 +426,9 @@ export class WeaponSystem {
     if (s.isCharge) return null;
 
     if (this._fireCooldown > 0) return null;
-    if (currentAmmo < s.ammoPerShot) return null;
+    if (currentAmmo < s.ammoPerShot) return { outOfAmmo: true };
 
-    this._fireCooldown = 1.0 / s.fireRate;
+    this._fireCooldown = 1.0 / (s.fireRate * (this._isRageMode ? 2.0 : 1.0));
 
     // Muzzle flash
     this._muzzleFlashTimer = 0.06;
@@ -469,7 +480,7 @@ export class WeaponSystem {
           velocity: dir.multiplyScalar(s.projectileSpeed),
           damage: finalDamage,
           tier: this.currentType === 'shotgun' ? 1 : 0,
-          options: { isShotgun: this.currentType === 'shotgun', isCrit }
+          options: { isShotgun: this.currentType === 'shotgun', isCrit, hitScale: this._isRageMode ? 3.0 : 1.0 }
         });
       }
     }
@@ -478,6 +489,48 @@ export class WeaponSystem {
       projectiles,
       ammoCost: s.ammoPerShot
     };
+  }
+
+  // ─── RAGE MODE ──────────────────────────────────────────────────
+
+  enterRageMode() {
+    this._isRageMode = true;
+    this._preRageType = this.currentType;
+    this._preRageLevel = this.currentLevel;
+
+    // Force pistol for rage (fast fire)
+    this.currentType = 'pistol';
+    this.currentLevel = 5; // high level for more damage
+
+    const s = this.getEffectiveStats();
+
+    // Clear existing guns
+    for (const mesh of this.gunMeshes) this.scene.remove(mesh);
+    for (const flash of this._muzzleFlashes) this.scene.remove(flash);
+    this.gunMeshes = [];
+    this.muzzlePoints = [];
+    this._muzzleFlashes = [];
+
+    // Build 4 bigger guns (2 per side, stacked vertically)
+    for (let i = 0; i < 4; i++) {
+      const gun = this._buildGunModel(s);
+      // Scale guns up 2.5× for the big crab
+      gun.scale.multiplyScalar(2.5);
+      this.scene.add(gun);
+      this.gunMeshes.push(gun);
+      this.muzzlePoints.push(new THREE.Vector3());
+      this._muzzleFlashes.push(this._createMuzzleFlashModel());
+    }
+    console.log('🔥 RAGE MODE: 4 guns active');
+  }
+
+  exitRageMode() {
+    this._isRageMode = false;
+    // Restore previous weapon
+    this.currentType = this._preRageType || 'pistol';
+    this.currentLevel = this._preRageLevel || 1;
+    this._buildGuns(this.getEffectiveStats());
+    console.log('🔫 Rage ended, weapon restored');
   }
 
   /**
@@ -524,33 +577,42 @@ export class WeaponSystem {
     const rightZ = sinY;
 
     const offsetFwd = 1.0;
-    const offsetUp = 1.2;
-    const offsetsRight = [1.5, -1.5]; // Right gun, Left gun
+    const baseOffsetUp = this._isRageMode ? 2.5 : 1.2;
+    // Rage: 4 guns stacked vertically (2 per side)
+    //   [0] = right-top, [1] = right-bottom, [2] = left-top, [3] = left-bottom
+    const offsetsRight = this._isRageMode
+      ? [3.5, 3.5, -3.5, -3.5]
+      : [1.5, -1.5];
+    const offsetsUp = this._isRageMode
+      ? [baseOffsetUp + 1.0, baseOffsetUp - 0.8, baseOffsetUp + 1.0, baseOffsetUp - 0.8]
+      : [baseOffsetUp, baseOffsetUp];
 
     const s = this.stats;
 
     for (let i = 0; i < this.gunMeshes.length; i++) {
       const gun = this.gunMeshes[i];
       const offR = offsetsRight[i];
+      const offU = offsetsUp[i];
 
       gun.position.set(
         crabPosition.x + rightX * offR + fwdX * offsetFwd,
-        crabPosition.y + offsetUp,
+        crabPosition.y + offU,
         crabPosition.z + rightZ * offR + fwdZ * offsetFwd
       );
       gun.rotation.y = Math.atan2(fwdX, fwdZ);
 
+      const muzzleDist = s.barrelLength * (this._isRageMode ? 3.5 : 1.5);
       this.muzzlePoints[i].set(
-        gun.position.x + fwdX * s.barrelLength * 1.5,
+        gun.position.x + fwdX * muzzleDist,
         gun.position.y,
-        gun.position.z + fwdZ * s.barrelLength * 1.5
+        gun.position.z + fwdZ * muzzleDist
       );
 
       const flash = this._muzzleFlashes[i];
       if (this._muzzleFlashTimer > 0) {
         flash.position.copy(this.muzzlePoints[i]);
         flash.material.opacity = this._muzzleFlashTimer / 0.06;
-        flash.scale.setScalar(1 + (1 - this._muzzleFlashTimer / 0.06) * 2);
+        flash.scale.setScalar((1 + (1 - this._muzzleFlashTimer / 0.06) * 2) * (this._isRageMode ? 2.5 : 1.0));
       } else {
         flash.material.opacity = 0;
       }

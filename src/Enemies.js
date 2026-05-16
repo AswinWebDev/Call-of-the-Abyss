@@ -121,6 +121,19 @@ export class EnemyManager {
     this._loadModel();
   }
 
+  // Push enemy out of burrow collider so they can't phase through
+  _enforceBurrowCollision(enemy) {
+    const bx = -60, bz = 0, br = 14.0; // burrow center and collision radius
+    const dx = enemy.position.x - bx;
+    const dz = enemy.position.z - bz;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < br && dist > 0.01) {
+      const pushAngle = Math.atan2(dz, dx);
+      enemy.position.x = bx + Math.cos(pushAngle) * br;
+      enemy.position.z = bz + Math.sin(pushAngle) * br;
+    }
+  }
+
   /**
    * Wipe all live state (enemies, drops, wave counters) for a Retry.
    * Loaded models / animations are kept so we don't re-fetch GLBs.
@@ -808,7 +821,7 @@ export class EnemyManager {
       this._octopusSpokeThisWave = true;
       this.spawnDialogueQueue.push({
         entity: enemy,
-        text: "You hear it too… don’t you The call of the abyss… it calls for you.",
+        text: "You hear it too… don't you The call of the abyss… it calls for you.",
         heightOffset: 15.0
       });
     }
@@ -1487,6 +1500,7 @@ export class EnemyManager {
 
               enemy.position.x += actualNx * enemy.speed * 2.0 * dt;
               enemy.position.z += nz * enemy.speed * 2.0 * dt;
+              this._enforceBurrowCollision(enemy);
               enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
               if (enemy.walkAction) enemy.walkAction.timeScale = 2.0;
             } else if (dirLen > 20.0) {
@@ -1495,6 +1509,7 @@ export class EnemyManager {
               const nz = dirZ / dirLen;
               enemy.position.x += nx * enemy.speed * 0.5 * dt;
               enemy.position.z += nz * enemy.speed * 0.5 * dt;
+              this._enforceBurrowCollision(enemy);
               enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
               if (enemy.walkAction) enemy.walkAction.timeScale = 0.5;
             } else {
@@ -1576,6 +1591,7 @@ export class EnemyManager {
                   
                   enemy.position.x += nx * currentSpeed * dt;
                   enemy.position.z += nz * currentSpeed * dt;
+                  this._enforceBurrowCollision(enemy);
                   enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
                   
                   // Face dash direction
@@ -1632,6 +1648,7 @@ export class EnemyManager {
 
             enemy.position.x += nx * currentSpeed * dt;
             enemy.position.z += nz * currentSpeed * dt;
+            this._enforceBurrowCollision(enemy);
             enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
 
             // Face crab
@@ -1639,7 +1656,7 @@ export class EnemyManager {
           }
 
           // Enter attack range
-          const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 8.0 : enemy.attackRange;
+          const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 16.0 : enemy.attackRange;
           if (distToTarget < effectiveAttackRange) {
             enemy.state = TURTLE_STATE.ATTACKING;
             enemy._attackTimer = 0;
@@ -1670,6 +1687,7 @@ export class EnemyManager {
           if (enemy._lungeProgress < 1) {
             enemy.position.x += enemy._lungeDir.x * lungeSpeed * dt;
             enemy.position.z += enemy._lungeDir.z * lungeSpeed * dt;
+            this._enforceBurrowCollision(enemy);
             enemy.position.y = this.world.getTerrainHeight(enemy.position.x, enemy.position.z) + (enemy.yOffset || 0);
 
             // Flash red during lunge
@@ -1682,7 +1700,7 @@ export class EnemyManager {
 
           // Deal damage at peak of lunge
           if (enemy._attackTimer > 0.25 && enemy._attackTimer < 0.35) {
-            const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 5.0 : enemy.attackRange + 2;
+            const effectiveAttackRange = attackingBurrow ? enemy.attackRange + 12.0 : enemy.attackRange + 2;
             if (distToTarget < effectiveAttackRange) {
               if (targetEntity && targetEntity.health !== undefined) {
                 targetEntity.health -= enemy.attackDamage;
@@ -1768,6 +1786,54 @@ export class EnemyManager {
             this.scene.remove(enemy.model);
           }
           break;
+      }
+    }
+
+    // ─── ENEMY SEPARATION PASS (Optimized O(N²/2)) ─────────────
+    // Separated out of the main AI loop so we only check each pair exactly once
+    const numEnemies = this.enemies.length;
+    for (let i = 0; i < numEnemies; i++) {
+      const e1 = this.enemies[i];
+      if (e1.state === TURTLE_STATE.DEAD || e1.state === TURTLE_STATE.DYING || e1.state === TURTLE_STATE.SPAWNING) continue;
+      
+      for (let j = i + 1; j < numEnemies; j++) {
+        const e2 = this.enemies[j];
+        if (e2.state === TURTLE_STATE.DEAD || e2.state === TURTLE_STATE.DYING || e2.state === TURTLE_STATE.SPAWNING) continue;
+        
+        const dx = e1.position.x - e2.position.x;
+        const dz = e1.position.z - e2.position.z;
+        const distSq = dx * dx + dz * dz;
+
+        const r1 = e1.hitRadius || 1.5;
+        const r2 = e2.hitRadius || 1.5;
+        const minDist = (r1 + r2) * 0.85;
+
+        if (distSq > 0 && distSq < minDist * minDist) {
+          const dist = Math.sqrt(distSq);
+          const overlap = minDist - dist;
+          const nx = dx / dist;
+          const nz = dz / dist;
+
+          const w1 = e1.isCthulhu ? 100 : (e1.isBoss ? 10 : 1);
+          const w2 = e2.isCthulhu ? 100 : (e2.isBoss ? 10 : 1);
+          const totalW = w1 + w2;
+          
+          // Push both simultaneously proportional to their weight difference
+          const push1 = overlap * (w2 / totalW) * 8.0 * dt;
+          const push2 = overlap * (w1 / totalW) * 8.0 * dt;
+
+          e1.position.x += nx * push1;
+          e1.position.z += nz * push1;
+          e2.position.x -= nx * push2;
+          e2.position.z -= nz * push2;
+
+          // Re-enforce bounds
+          this._enforceBurrowCollision(e1);
+          e1.position.y = this.world.getTerrainHeight(e1.position.x, e1.position.z) + (e1.yOffset || 0);
+          
+          this._enforceBurrowCollision(e2);
+          e2.position.y = this.world.getTerrainHeight(e2.position.x, e2.position.z) + (e2.yOffset || 0);
+        }
       }
     }
 

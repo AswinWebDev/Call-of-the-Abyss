@@ -60,14 +60,14 @@ let _lastWaveForDrums = 0;
 // Game State: 'MENU' or 'PLAYING'
 let gameState = 'MENU';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const canvas = document.getElementById('game-canvas');
   if (!canvas) { console.error('Canvas not found'); return; }
 
   // ─── WAVEDASH SDK INIT (must be first — dismisses the loading screen) ─
   // initWavedash() calls Wavedash.init() which signals to the Wavedash
   // platform that the game has loaded. If not on Wavedash it no-ops.
-  const wavedashUser = initWavedash();
+  const wavedashUser = await initWavedash();
 
   // Re-apply touch-mode class once <body> is definitely available
   if (HAS_TOUCH && document.body) document.body.classList.add('touch-mode');
@@ -103,75 +103,162 @@ document.addEventListener('DOMContentLoaded', () => {
   crab.audio = audio;       // Inject (used for splash + reload sounds)
   
   // ─── DEATH SEQUENCE HOOK ───────────────────────────────────
-  // Fired once when crab.health hits 0. Plays an echo'd Cthulhu line,
-  // silences the ambient audio, and starts the 7s darkening overlay.
+  // Fired once when crab.health hits 0. First death triggers resurrection
+  // rage mode; second death is permanent.
   let deathWindowShown = false;
+  let _resurrectionTimeout = null;
+  let _deathTimeout = null;
   crab._onDeath = () => {
     console.log('💀 Crab died — starting death sequence');
     mouseHeld = false;
-    gameState = 'DEAD';
 
-    // Pick one of the two death lines at random
-    const deathLines = [
-      'belong-to-the-deep.mp3',
-      'sink-without-fear.mp3'
-    ];
-    const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
+    if (crab.hasResurrection) {
+      // ─── FIRST DEATH: RESURRECTION ─────────────────────────
+      gameState = 'DEAD'; // Temporarily dead during the 2s animation
 
-    // Resolve preloaded buffer (DialogueManager preloads + AudioManager decodes)
-    const resolveAndPlay = () => {
+      // Start the death overlay (will be cancelled at resurrection)
+      const deathOverlay = document.getElementById('death-overlay');
+      if (deathOverlay) deathOverlay.classList.add('dying');
+
+      // Play death sound
+      const deathLines = ['belong-to-the-deep.mp3', 'sink-without-fear.mp3'];
+      const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
       const raw = dialogue && dialogue.audioBuffers ? dialogue.audioBuffers[chosen] : null;
       if (raw && raw instanceof AudioBuffer) {
         audio.playDeathDialogueWithEcho(raw);
-      } else if (raw && audio && audio.ctx) {
-        // ArrayBuffer fallback — decode then play
-        audio.ctx.decodeAudioData(raw.slice(0)).then(decoded => {
-          audio.playDeathDialogueWithEcho(decoded);
-        }).catch(() => {});
-      }
-    };
-    resolveAndPlay();
-
-    // Trigger the 7-second darkening animation
-    const deathOverlay = document.getElementById('death-overlay');
-    if (deathOverlay) deathOverlay.classList.add('dying');
-
-    // Fire-and-forget score submission as soon as the player dies.
-    // We don't block on it — even if the network is slow, the death
-    // window appears at 7s and the leaderboard refreshes when ready.
-    const runStats = {
-      wave: enemyManager.currentWave || 0,
-      kills: enemyManager.totalKills || 0,
-      coins: crab.totalCoinsCollected || 0
-    };
-    const submission = submitScore(runStats);
-
-    // After 7s, show the Death Window with run stats
-    setTimeout(() => {
-      if (deathWindowShown) return;
-      deathWindowShown = true;
-      try { document.exitPointerLock(); } catch (e) {}
-
-      const waveEl = document.getElementById('death-wave');
-      const killsEl = document.getElementById('death-kills');
-      const coinsEl = document.getElementById('death-coins');
-      if (waveEl) waveEl.textContent = runStats.wave;
-      if (killsEl) killsEl.textContent = runStats.kills;
-      if (coinsEl) coinsEl.textContent = runStats.coins;
-
-      // Personalize the subtitle with the player's name
-      const subtitleEl = document.querySelector('#death-window .death-subtitle');
-      if (subtitleEl && window.playerName) {
-        subtitleEl.textContent = `${window.playerName}, the abyss has claimed you`;
       }
 
-      const dw = document.getElementById('death-window');
-      if (dw) dw.classList.add('visible');
+      // After 2 seconds — RESURRECT!
+      _resurrectionTimeout = setTimeout(() => {
+        console.log('🔥 RESURRECTION RAGE MODE!');
 
-      // Render leaderboard after submission resolves so this run is included
-      submission.then(() => renderLeaderboard('death-leaderboard', 3));
-    }, 7000);
+        if (dialogue) {
+          dialogue.clearAll();
+          dialogue.isRageLocked = true;
+        }
+
+        // Stop the echoing death dialogue
+        if (audio && audio.stopDeathDialogueWithEcho) {
+          audio.stopDeathDialogueWithEcho();
+        }
+
+        // Play resurrect voice line
+        if (audio && audio.playRageResurrectSound) {
+          audio.playRageResurrectSound();
+        }
+
+        // Cancel death overlay
+        if (deathOverlay) deathOverlay.classList.remove('dying');
+
+        // Set up landing callback — sand burst fires when crab hits the ground
+        crab._onRageLand = () => {
+          if (dialogue) dialogue.isRageLocked = false;
+          crab.triggerRageBurst(enemyManager, audio);
+          crab._onRageLand = null; // One-shot
+        };
+
+        // Activate rage on the crab (starts ascension animation)
+        crab.activateRage();
+
+        // Switch weapons to rage mode (4 guns, 2× fire rate)
+        if (weapons) weapons.enterRageMode();
+
+        // Create rage bar UI
+        _createRageBar();
+
+        // Return game state to playing
+        gameState = 'PLAYING';
+
+        // Re-lock pointer
+        try { canvas.requestPointerLock(); } catch(e) {}
+      }, 2000);
+
+    } else {
+      // ─── SECOND DEATH: PERMANENT ───────────────────────────
+      gameState = 'DEAD';
+
+      const deathLines = ['belong-to-the-deep.mp3', 'sink-without-fear.mp3'];
+      const chosen = deathLines[Math.floor(Math.random() * deathLines.length)];
+      const resolveAndPlay = () => {
+        const raw = dialogue && dialogue.audioBuffers ? dialogue.audioBuffers[chosen] : null;
+        if (raw && raw instanceof AudioBuffer) {
+          audio.playDeathDialogueWithEcho(raw);
+        } else if (raw && audio && audio.ctx) {
+          audio.ctx.decodeAudioData(raw.slice(0)).then(decoded => {
+            audio.playDeathDialogueWithEcho(decoded);
+          }).catch(() => {});
+        }
+      };
+      resolveAndPlay();
+
+      const deathOverlay = document.getElementById('death-overlay');
+      if (deathOverlay) deathOverlay.classList.add('dying');
+
+      const runStats = {
+        wave: enemyManager.currentWave || 0,
+        kills: enemyManager.totalKills || 0,
+        coins: crab.totalCoinsCollected || 0
+      };
+      const submission = submitScore(runStats);
+
+      _deathTimeout = setTimeout(() => {
+        if (deathWindowShown) return;
+        deathWindowShown = true;
+        try { document.exitPointerLock(); } catch (e) {}
+
+        const waveEl = document.getElementById('death-wave');
+        const killsEl = document.getElementById('death-kills');
+        const coinsEl = document.getElementById('death-coins');
+        if (waveEl) waveEl.textContent = runStats.wave;
+        if (killsEl) killsEl.textContent = runStats.kills;
+        if (coinsEl) coinsEl.textContent = runStats.coins;
+
+        const subtitleEl = document.querySelector('#death-window .death-subtitle');
+        if (subtitleEl && window.playerName) {
+          subtitleEl.textContent = `${window.playerName}, the abyss has claimed you`;
+        }
+
+        const dw = document.getElementById('death-window');
+        if (dw) dw.classList.add('visible');
+
+        submission.then(() => renderLeaderboard('death-leaderboard', 3));
+      }, 7000);
+    }
   };
+
+  // ─── RAGE BAR UI ────────────────────────────────────────────
+  function _createRageBar() {
+    let bar = document.getElementById('rage-bar-container');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'rage-bar-container';
+      bar.style.cssText = 'position:fixed; top:24px; left:50%; transform:translateX(-50%); width:320px; height:10px; background:rgba(0,0,0,0.6); border-radius:5px; z-index:20; pointer-events:none; border:1px solid rgba(255,50,0,0.5);';
+      const fill = document.createElement('div');
+      fill.id = 'rage-bar-fill';
+      fill.style.cssText = 'height:100%; width:100%; background:linear-gradient(90deg, #FF2200, #FF6600, #FF2200); border-radius:5px; transition:width 0.1s linear;';
+      bar.appendChild(fill);
+      const label = document.createElement('div');
+      label.style.cssText = 'position:absolute; top:-18px; left:50%; transform:translateX(-50%); color:#FF4400; font-size:12px; font-weight:bold; letter-spacing:2px; text-transform:uppercase; text-shadow:0 0 8px #FF2200;';
+      label.textContent = '🔥 RAGE';
+      bar.appendChild(label);
+      document.body.appendChild(bar);
+    }
+    bar.style.display = 'block';
+  }
+
+  function _updateRageBar() {
+    if (!crab.isRaging || crab._ragePhase !== 'active') return;
+    const fill = document.getElementById('rage-bar-fill');
+    if (fill) {
+      const pct = Math.max(0, (crab.rageTimer / crab.rageDuration) * 100);
+      fill.style.width = `${pct}%`;
+    }
+  }
+
+  function _hideRageBar() {
+    const bar = document.getElementById('rage-bar-container');
+    if (bar) bar.style.display = 'none';
+  }
 
   weapons = new WeaponSystem(engine.scene, audio);
   projectiles = new ProjectilePool(engine.scene);
@@ -241,17 +328,23 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedName = '';
   try { cachedName = sessionStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) {}
 
+  // Name sourced from Wavedash → session cache → fallback.
+  // The name-entry overlay is disabled ONLY if we have a name.
   if (wavedashUser && wavedashUser.username) {
-    // Running on Wavedash — use platform identity, skip name overlay
     setPlayerName(wavedashUser.username);
-    nameOverlay.classList.add('hidden');
+    if (nameOverlay) nameOverlay.classList.add('hidden');
     mainMenu.classList.remove('hidden');
   } else if (cachedName) {
     setPlayerName(cachedName);
-    nameOverlay.classList.add('hidden');
+    if (nameOverlay) nameOverlay.classList.add('hidden');
     mainMenu.classList.remove('hidden');
   } else {
-    setTimeout(() => nameInput && nameInput.focus(), 100);
+    // Show overlay to enter name manually
+    if (nameOverlay) nameOverlay.classList.remove('hidden');
+    mainMenu.classList.add('hidden');
+    setTimeout(() => {
+      if (nameInput) nameInput.focus();
+    }, 100);
   }
 
   // Bind both pointerdown (fast on mobile, no 300ms tap delay) and click
@@ -433,6 +526,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 4. Reset death-window flag so a future death triggers it again
     deathWindowShown = false;
+    // Clear any pending resurrection timeout
+    if (_resurrectionTimeout) { clearTimeout(_resurrectionTimeout); _resurrectionTimeout = null; }
+    if (_deathTimeout) { clearTimeout(_deathTimeout); _deathTimeout = null; }
+    // Exit rage mode if active
+    if (weapons && weapons._isRageMode) weapons.exitRageMode();
+    _hideRageBar();
 
     // 5. Show HUD, lock pointer (or skip on touch), resume play
     uiLayer.style.display = 'flex';
@@ -681,15 +780,17 @@ document.addEventListener('DOMContentLoaded', () => {
           crab.currentAmmo
         );
         if (fireResult) {
-          crab.currentAmmo -= fireResult.ammoCost;
-          for (const p of fireResult.projectiles) {
-            projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
-          }
-        } else if (crab.currentAmmo < weapons.stats.ammoPerShot) {
-          if (dialogue && crab.model) {
-            if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
-              crab._lastLowWaterVoice = Date.now();
-              dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+          if (fireResult.outOfAmmo) {
+            if (dialogue && crab.model) {
+              if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                crab._lastLowWaterVoice = Date.now();
+                dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+              }
+            }
+          } else {
+            crab.currentAmmo -= fireResult.ammoCost;
+            for (const p of fireResult.projectiles) {
+              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
             }
           }
         }
@@ -715,7 +816,8 @@ document.addEventListener('DOMContentLoaded', () => {
     sunLightIntensity: 3.0,
     hemiSky:  new THREE.Color(0x87CEEB),
     hemiGround: new THREE.Color(0xc2b280),
-    hemiIntensity: 1.0
+    hemiIntensity: 1.0,
+    oceanTint: new THREE.Color(1.0, 1.0, 1.0)
   };
   // Moonlit-night palette — bright enough that the boss's face & details
   // read clearly, dim enough to feel ominous. Cool silver-blue cast.
@@ -730,7 +832,23 @@ document.addEventListener('DOMContentLoaded', () => {
     sunLightIntensity: 1.4,             // dimmer than day, but enough for shadows
     hemiSky:  new THREE.Color(0x2a3858),
     hemiGround: new THREE.Color(0x1a1a28),
-    hemiIntensity: 0.55
+    hemiIntensity: 0.55,
+    oceanTint: new THREE.Color(0.7, 0.8, 1.0)
+  };
+  // Red Moon palette for Resurrection Rage — ominous blood red sky and lighting
+  const _stormRage = {
+    top:    new THREE.Color(0x3a0000),  // deep blood red sky
+    horiz:  new THREE.Color(0x8a1010),  // bloody horizon
+    bottom: new THREE.Color(0x400505),  // dark reddish ground
+    sun:    new THREE.Color(0xff4444),  // red moon glow
+    fogColor: new THREE.Color(0x3a1a1a),// reddish-grey fog
+    fogDensity: 0.004,
+    sunLightColor: new THREE.Color(0xff8888), // softer red moonlight
+    sunLightIntensity: 1.6, // reduced intensity
+    hemiSky:  new THREE.Color(0x661a1a), // softer red ambient
+    hemiGround: new THREE.Color(0x2a0a0a), // darker ground
+    hemiIntensity: 0.8,
+    oceanTint: new THREE.Color(1.0, 0.1, 0.1) // Deep blood red tint for ocean
   };
   let _stormBlend = 0; // 0 = calm, 1 = full storm
   let _nextLightningAt = 0;
@@ -747,40 +865,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateStorm(dt, time) {
     const stormActive = enemyManager && enemyManager._cthulhuAlive;
-    const target = stormActive ? 1 : 0;
+    const rageActive = crab && crab.isRaging;
+    
+    // Target is 1 if any storm/rage is active, 0 for calm
+    const target = (stormActive || rageActive) ? 1 : 0;
+    
     if (_stormBlend < target) _stormBlend = Math.min(target, _stormBlend + dt * 0.5);
     else if (_stormBlend > target) _stormBlend = Math.max(target, _stormBlend - dt * 0.4);
 
+    // Rage overrides Cthulhu's silver storm
+    const activePalette = rageActive ? _stormRage : _stormDark;
+
     // Sky shader uniform interpolation
     if (engine.skyUniforms) {
-      _lerpColor(engine.skyUniforms.topColor.value,    _stormCalm.top,    _stormDark.top,    _stormBlend);
-      _lerpColor(engine.skyUniforms.horizonColor.value,_stormCalm.horiz,  _stormDark.horiz,  _stormBlend);
-      _lerpColor(engine.skyUniforms.bottomColor.value, _stormCalm.bottom, _stormDark.bottom, _stormBlend);
-      _lerpColor(engine.skyUniforms.sunColor.value,    _stormCalm.sun,    _stormDark.sun,    _stormBlend);
+      _lerpColor(engine.skyUniforms.topColor.value,    _stormCalm.top,    activePalette.top,    _stormBlend);
+      _lerpColor(engine.skyUniforms.horizonColor.value,_stormCalm.horiz,  activePalette.horiz,  _stormBlend);
+      _lerpColor(engine.skyUniforms.bottomColor.value, _stormCalm.bottom, activePalette.bottom, _stormBlend);
+      _lerpColor(engine.skyUniforms.sunColor.value,    _stormCalm.sun,    activePalette.sun,    _stormBlend);
     }
     // Scene fog
     if (engine.scene.fog) {
-      _lerpColor(engine.scene.fog.color, _stormCalm.fogColor, _stormDark.fogColor, _stormBlend);
-      engine.scene.fog.density = _lerp(_stormCalm.fogDensity, _stormDark.fogDensity, _stormBlend);
+      _lerpColor(engine.scene.fog.color, _stormCalm.fogColor, activePalette.fogColor, _stormBlend);
+      engine.scene.fog.density = _lerp(_stormCalm.fogDensity, activePalette.fogDensity, _stormBlend);
     }
     if (engine.scene.background && engine.scene.background.isColor) {
-      _lerpColor(engine.scene.background, _stormCalm.fogColor, _stormDark.fogColor, _stormBlend);
+      _lerpColor(engine.scene.background, _stormCalm.fogColor, activePalette.fogColor, _stormBlend);
     }
-    // Sun (directional) light → moonlight while storming. Keeps shadows
-    // casting but with a cool silver-blue tone instead of warm daylight.
+    // Sun (directional) light
     if (engine.sunLight) {
-      _lerpColor(engine.sunLight.color, _stormCalm.sunLightColor, _stormDark.sunLightColor, _stormBlend);
-      engine.sunLight.intensity = _lerp(_stormCalm.sunLightIntensity, _stormDark.sunLightIntensity, _stormBlend);
+      _lerpColor(engine.sunLight.color, _stormCalm.sunLightColor, activePalette.sunLightColor, _stormBlend);
+      engine.sunLight.intensity = _lerp(_stormCalm.sunLightIntensity, activePalette.sunLightIntensity, _stormBlend);
     }
-    // Hemisphere ambient — also shifts cool so unlit faces aren't black voids
+    // Hemisphere ambient
     if (engine.hemiLight) {
-      _lerpColor(engine.hemiLight.color,       _stormCalm.hemiSky,    _stormDark.hemiSky,    _stormBlend);
-      _lerpColor(engine.hemiLight.groundColor, _stormCalm.hemiGround, _stormDark.hemiGround, _stormBlend);
-      engine.hemiLight.intensity = _lerp(_stormCalm.hemiIntensity, _stormDark.hemiIntensity, _stormBlend);
+      _lerpColor(engine.hemiLight.color,       _stormCalm.hemiSky,    activePalette.hemiSky,    _stormBlend);
+      _lerpColor(engine.hemiLight.groundColor, _stormCalm.hemiGround, activePalette.hemiGround, _stormBlend);
+      engine.hemiLight.intensity = _lerp(_stormCalm.hemiIntensity, activePalette.hemiIntensity, _stormBlend);
+    }
+    // Ocean custom shader tint
+    if (world.ocean && world.ocean.material && world.ocean.material.uniforms.tintColor) {
+      _lerpColor(world.ocean.material.uniforms.tintColor.value, _stormCalm.oceanTint, activePalette.oceanTint, _stormBlend);
     }
 
-    // Lightning scheduler — HEAVY strikes once storm is active
-    if (_stormBlend > 0.4 && stormActive) {
+    // Lightning scheduler — HEAVY strikes once storm is active (but NO lightning during Rage)
+    if (_stormBlend > 0.4 && stormActive && !rageActive) {
       if (_nextLightningAt === 0) _nextLightningAt = time + 0.8 + Math.random() * 1.2;
       if (time >= _nextLightningAt) {
         // Multi-flicker flash sequence (4-6 flickers per strike — denser)
@@ -872,9 +1000,18 @@ document.addEventListener('DOMContentLoaded', () => {
             crab.currentAmmo
           );
           if (releaseResult) {
-            crab.currentAmmo -= releaseResult.ammoCost;
-            for (const p of releaseResult.projectiles) {
-              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
+            if (releaseResult.outOfAmmo) {
+              if (dialogue && crab.model && !crab.isRaging) {
+                if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                  crab._lastLowWaterVoice = Date.now();
+                  dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+                }
+              }
+            } else {
+              crab.currentAmmo -= releaseResult.ammoCost;
+              for (const p of releaseResult.projectiles) {
+                projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
+              }
             }
           }
         }
@@ -890,15 +1027,17 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         if (fireResult) {
-          crab.currentAmmo -= fireResult.ammoCost;
-          for (const p of fireResult.projectiles) {
-            projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
-          }
-        } else if (crab.currentAmmo < weapons.stats.ammoPerShot && !weapons.stats.isCharge) {
-          if (dialogue && crab.model) {
-            if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
-              crab._lastLowWaterVoice = Date.now();
-              dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+          if (fireResult.outOfAmmo) {
+            if (!weapons.stats.isCharge && dialogue && crab.model && !crab.isRaging) {
+              if (!crab._lastLowWaterVoice || Date.now() - crab._lastLowWaterVoice > 5000) {
+                crab._lastLowWaterVoice = Date.now();
+                dialogue.speak(crab.model, "Need more water... hold on.", 'hero', 3.0);
+              }
+            }
+          } else {
+            crab.currentAmmo -= fireResult.ammoCost;
+            for (const p of fireResult.projectiles) {
+              projectiles.spawn(p.position, p.velocity, p.damage, p.tier, p.options);
             }
           }
         }
@@ -971,6 +1110,24 @@ document.addEventListener('DOMContentLoaded', () => {
       // Enemies AI
       const combatResult = enemyManager.update(dt, time, crab.position, engine.camera, burrowManager, gameState === 'PLAYING', enemyProjectiles);
 
+      // ─── RAGE MODE PER-FRAME ────────────────────────────────
+      if (crab.isRaging) {
+        // Unlimited ammo — keep it full
+        crab.currentAmmo = crab.maxAmmo;
+        // Update rage bar UI
+        _updateRageBar();
+        // Detect rage just ended (deactivateRage was called by Crab.update)
+        if (!crab.isRaging) {
+          if (weapons) weapons.exitRageMode();
+          _hideRageBar();
+        }
+      }
+      // Fallback: check if rage ended this frame
+      if (!crab.isRaging && weapons && weapons._isRageMode) {
+        weapons.exitRageMode();
+        _hideRageBar();
+      }
+
       // ─── WAVE BACKGROUND DRUMS ──────────────────────────────
       const MUSIC_ENABLED = true;
       if (MUSIC_ENABLED) {
@@ -992,9 +1149,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       dialogue.update(dt);
 
-      // Burrow update & deposit
+      // Burrow update & deposit — interaction zone is IN FRONT of the burrow (toward sea)
       burrowManager.update(dt, time, enemyManager);
-      if (crab.coins > 0 && crab.position.distanceTo(burrowManager.position) < burrowManager.depositRadius) {
+      const depositPoint = burrowManager.position.clone();
+      depositPoint.x += 15; // In front of burrow (sea side)
+      if (crab.coins > 0 && crab.position.distanceTo(depositPoint) < 18) {
         const used = burrowManager.tryInteract(crab.coins);
         if (used > 0) {
           crab.coins -= used;
