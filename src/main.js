@@ -329,16 +329,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   try { cachedName = sessionStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) {}
 
   // Name sourced from Wavedash → session cache → fallback.
-  // The name-entry overlay is disabled (Wavedash handles identity).
+  // The name-entry overlay is disabled ONLY if we have a name.
   if (wavedashUser && wavedashUser.username) {
     setPlayerName(wavedashUser.username);
+    if (nameOverlay) nameOverlay.classList.add('hidden');
+    mainMenu.classList.remove('hidden');
   } else if (cachedName) {
     setPlayerName(cachedName);
+    if (nameOverlay) nameOverlay.classList.add('hidden');
+    mainMenu.classList.remove('hidden');
   } else {
-    setPlayerName('Survivor'); // Fallback — overlay disabled
+    // Show overlay to enter name manually
+    if (nameOverlay) nameOverlay.classList.remove('hidden');
+    mainMenu.classList.add('hidden');
+    setTimeout(() => {
+      if (nameInput) nameInput.focus();
+    }, 100);
   }
-  if (nameOverlay) nameOverlay.classList.add('hidden');
-  mainMenu.classList.remove('hidden');
 
   // Bind both pointerdown (fast on mobile, no 300ms tap delay) and click
   // (desktop fallback) — guarded so a single tap can't fire twice.
