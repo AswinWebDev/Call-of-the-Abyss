@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three';
 
+const _camFwd = new THREE.Vector3();
+
 const WEAPON_TRACKS = {
   pistol: {
     name: 'Pistol',
@@ -380,8 +382,7 @@ export class WeaponSystem {
     this._hoseCooldown = 1.0 / 15.0;
 
     // Shoot straight where the crosshair is looking
-    const camFwd = new THREE.Vector3();
-    camera.getWorldDirection(camFwd);
+    camera.getWorldDirection(_camFwd);
 
     const projectiles = [];
     // Per-tick damage. Old hose was 5s with 0.2× scaling; the new 1s window
@@ -391,7 +392,7 @@ export class WeaponSystem {
 
     for (let m = 0; m < this.muzzlePoints.length; m++) {
       const muzzlePos = this.muzzlePoints[m];
-      const dir = camFwd.clone().normalize();
+      const dir = _camFwd.clone().normalize();
       dir.y += 0.03;
       dir.normalize();
 
@@ -438,8 +439,7 @@ export class WeaponSystem {
     }
 
     // Shoot straight where the crosshair is looking
-    const camFwd = new THREE.Vector3();
-    camera.getWorldDirection(camFwd);
+    camera.getWorldDirection(_camFwd);
 
     const projectiles = [];
 
@@ -447,7 +447,7 @@ export class WeaponSystem {
       const muzzlePos = this.muzzlePoints[m];
       
       for (let i = 0; i < s.projectilesPerShot; i++) {
-        const dir = camFwd.clone().normalize();
+        const dir = _camFwd.clone().normalize();
 
         // Apply spread
         if (s.spread > 0) {

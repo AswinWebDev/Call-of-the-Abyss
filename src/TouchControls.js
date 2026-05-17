@@ -40,13 +40,12 @@ export class TouchControls {
 
   _bindEvents() {
     const moveBase = this._el('move-stick-base');
-    const lookArea = this._el('look-area');
     const fireBtn  = this._el('btn-fire');
     const jumpBtn  = this._el('btn-jump');
     const burstBtn = this._el('btn-burst');
     const pauseBtn = this._el('btn-pause');
 
-    if (!moveBase || !lookArea) {
+    if (!moveBase) {
       return;
     }
 
@@ -66,19 +65,37 @@ export class TouchControls {
       }
     }, { passive: false });
 
-    // ─── Look pad ───────────────────────────────────────────
-    lookArea.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    // ─── Document-level: any touch NOT on a button/joystick = look ───
+    // This replaces the old #look-area div approach. By listening at
+    // document level and checking e.target, we avoid z-index races and
+    // ensure every unclaimed touch becomes a camera-look drag.
+    const isControlElement = (el) => {
+      if (!el) return false;
+      return el.closest('#move-stick-base') ||
+             el.closest('.touch-btn') ||
+             el.closest('#btn-pause') ||
+             el.closest('.upgrade-modal') ||
+             el.closest('#main-menu') ||
+             el.closest('#death-screen') ||
+             el.closest('#how-to-play-screen');
+    };
+
+    document.addEventListener('touchstart', (e) => {
       for (const t of e.changedTouches) {
-        if (this._anyKind('look')) continue; // only one look touch
+        // Skip if already tracked (joystick or button started first)
+        if (this._touches[t.identifier]) continue;
+        // Skip if touch started on a control element
+        if (isControlElement(t.target)) continue;
+        // Skip if we already have a look touch
+        if (this._anyKind('look')) continue;
+
         this._touches[t.identifier] = {
           kind: 'look',
           lastX: t.clientX,
           lastY: t.clientY
         };
       }
-    }, { passive: false });
+    }, { passive: true }); // passive OK — we don't need to preventDefault for look
 
     // ─── Global touchmove + touchend (track by id) ──────────
     const moveHandler = (e) => {

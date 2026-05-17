@@ -22,6 +22,48 @@ const SPAWN_MAX = { boss: 2, octopus: 3, turtle: 8 };
 // pressure during heavy waves.
 const _DROP_SCRATCH = new THREE.Vector3();
 
+// Shared geometry + materials for collectible drops — created once, reused
+// for every drop to avoid per-kill allocation overhead.
+let _dropGeo = null;
+let _dropMatCoin = null;
+let _dropMatHealth = null;
+let _dropGlowGeo = null;
+let _dropGlowMatCoin = null;
+let _dropGlowMatHealth = null;
+
+function _getDropGeo() {
+  if (!_dropGeo) _dropGeo = new THREE.IcosahedronGeometry(0.5, 0);
+  return _dropGeo;
+}
+function _getDropMat(type) {
+  if (type === 'health') {
+    if (!_dropMatHealth) _dropMatHealth = new THREE.MeshStandardMaterial({
+      color: 0x44ff66, emissive: 0x00ff44, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.8
+    });
+    return _dropMatHealth;
+  }
+  if (!_dropMatCoin) _dropMatCoin = new THREE.MeshStandardMaterial({
+    color: 0xffdd44, emissive: 0xffaa00, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.8
+  });
+  return _dropMatCoin;
+}
+function _getDropGlowGeo() {
+  if (!_dropGlowGeo) _dropGlowGeo = new THREE.RingGeometry(0.6, 0.9, 12);
+  return _dropGlowGeo;
+}
+function _getDropGlowMat(type) {
+  if (type === 'health') {
+    if (!_dropGlowMatHealth) _dropGlowMatHealth = new THREE.MeshBasicMaterial({
+      color: 0x44ff66, transparent: true, opacity: 0.4, side: THREE.DoubleSide
+    });
+    return _dropGlowMatHealth;
+  }
+  if (!_dropGlowMatCoin) _dropGlowMatCoin = new THREE.MeshBasicMaterial({
+    color: 0xffdd44, transparent: true, opacity: 0.4, side: THREE.DoubleSide
+  });
+  return _dropGlowMatCoin;
+}
+
 // --- Upgrade 2.0: Variant Modifiers (wave >= 5) ---
 const VARIANTS = {
   octopus: {
@@ -1170,36 +1212,14 @@ export class EnemyManager {
   }
 
   _spawnDrop(position, dropType, value = 1) {
-    const geo = new THREE.IcosahedronGeometry(0.5, 0);
-    let color, emissive;
-    if (dropType === 'health') {
-      color = 0x44ff66;
-      emissive = 0x00ff44;
-    } else {
-      color = 0xffdd44;
-      emissive = 0xffaa00;
-    }
-    const mat = new THREE.MeshStandardMaterial({
-      color, emissive,
-      emissiveIntensity: 0.6,
-      roughness: 0.2,
-      metalness: 0.8
-    });
-    const orb = new THREE.Mesh(geo, mat);
+    const orb = new THREE.Mesh(_getDropGeo(), _getDropMat(dropType));
     orb.position.copy(position);
     orb.position.y += 1.5;
     orb.castShadow = true;
     this.scene.add(orb);
 
-    // Glow ring
-    const glowGeo = new THREE.RingGeometry(0.6, 0.9, 12);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: dropType === 'health' ? 0x44ff66 : 0xffdd44,
-      transparent: true,
-      opacity: 0.4,
-      side: THREE.DoubleSide
-    });
-    const glow = new THREE.Mesh(glowGeo, glowMat);
+    // Glow ring (shared geo + mat)
+    const glow = new THREE.Mesh(_getDropGlowGeo(), _getDropGlowMat(dropType));
     glow.rotation.x = -Math.PI / 2;
     orb.add(glow);
 
@@ -1354,29 +1374,36 @@ export class EnemyManager {
         enemy.healthBarGroup.lookAt(cameraRef.position);
       }
 
-      // Red flash effect
+      // Red flash effect — uses cached mesh list to avoid per-frame traverse
       if (enemy._flashTimer > 0) {
         enemy._flashTimer -= dt;
         const flashIntensity = enemy._flashTimer / 0.15;
-        enemy.model.traverse((child) => {
-          if (child.isMesh && child.material && child.material.emissive) {
-            child.material.emissive.setRGB(flashIntensity, 0, 0);
-          }
-        });
+        // Lazily build the flash mesh cache on first hit
+        if (!enemy._flashMeshes) {
+          enemy._flashMeshes = [];
+          enemy.model.traverse((child) => {
+            if (child.isMesh && child.material && child.material.emissive) {
+              enemy._flashMeshes.push(child);
+            }
+          });
+        }
+        for (const child of enemy._flashMeshes) {
+          child.material.emissive.setRGB(flashIntensity, 0, 0);
+        }
         // Mark that we need to reset
         enemy._needsFlashReset = true;
       } else if (enemy._needsFlashReset) {
         // Reset emissive only once when flash ends
         enemy._needsFlashReset = false;
-        enemy.model.traverse((child) => {
-          if (child.isMesh && child.material && child.material.emissive) {
+        if (enemy._flashMeshes) {
+          for (const child of enemy._flashMeshes) {
             if (child.userData.originalEmissive) {
               child.material.emissive.copy(child.userData.originalEmissive);
             } else {
               child.material.emissive.setRGB(0, 0, 0);
             }
           }
-        });
+        }
       }
 
       let targetPos = crabPosition;
