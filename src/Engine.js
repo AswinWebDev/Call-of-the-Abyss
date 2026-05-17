@@ -32,12 +32,8 @@ export class Engine {
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-    // Mobile detection via simple UA string check
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    // Cap pixel ratio at 1.0 on mobile to drastically reduce GPU fill rate.
-    // On desktop, cap at 1.5 to keep things sharp but prevent 4K retina blowouts.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.0 : 1.5));
+    // Cap pixel ratio at 1.5 to keep things sharp but prevent 4K retina blowouts.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
     // AAA colour pipeline
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -60,19 +56,14 @@ export class Engine {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
     
-    // Disable expensive bloom pass on mobile
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    if (!isMobile) {
-      // Resolution, strength, radius, threshold
-      const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
-        0.25, // intensity
-        0.8,  // radius
-        0.9   // threshold
-      );
-      this.composer.addPass(bloomPass);
-    }
+    // Resolution, strength, radius, threshold
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.25, // intensity
+      0.8,  // radius
+      0.9   // threshold
+    );
+    this.composer.addPass(bloomPass);
 
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
