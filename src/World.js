@@ -400,7 +400,6 @@ export class World {
     // Load simple_rock_iv.glb — beach rocks only
     this.loader.load('./models/simple_rock_iv.glb', (gltf) => {
       this._placeRocks(gltf.scene, 'simple_rock', 20);
-      console.log('✓ Rocks loaded');
     });
   }
 
@@ -798,7 +797,6 @@ export class World {
         this.scene.add(tree);
       }
 
-      console.log('✓ Trees loaded (purposeful placement)');
     });
   }
 
@@ -871,8 +869,7 @@ export class World {
 
         this.scene.add(fern);
       }
-      console.log('✓ Ferns loaded (dense jungle)');
-    }, undefined, (err) => console.log('Failed to load ferns', err));
+    }, undefined, () => {});
   }
 
   // ─── SEAGULLS ───────────────────────────────────────────────────

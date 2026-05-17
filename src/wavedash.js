@@ -28,10 +28,8 @@ function getLeaderboardId() {
           Wavedash.LeaderboardDisplayType.NUMERIC
         );
         if (res.success) return res.data.id;
-        console.warn('[wavedash] getOrCreateLeaderboard failed:', res.message);
         return null;
       } catch (e) {
-        console.warn('[wavedash] getOrCreateLeaderboard error:', e);
         return null;
       }
     })();
@@ -82,10 +80,8 @@ export async function submitScore({ wave, kills }) {
     const score = encodeScore(wave, kills);
     const res = await Wavedash.uploadLeaderboardScore(lbId, score, true);
     if (res.success) return res.data.globalRank;
-    console.warn('[wavedash] uploadLeaderboardScore failed:', res.message);
     return null;
   } catch (e) {
-    console.warn('[wavedash] submitScore error:', e);
     return null;
   }
 }
@@ -104,7 +100,6 @@ export async function fetchTopScores(n = 10) {
       return { name: entry.username || 'Anonymous', wave, kills, coins: 0, globalRank: entry.globalRank };
     });
   } catch (e) {
-    console.warn('[wavedash] fetchTopScores error:', e);
     return [];
   }
 }
@@ -125,7 +120,6 @@ export async function fetchPlayerRank() {
       rank: best.globalRank
     };
   } catch (e) {
-    console.warn('[wavedash] fetchPlayerRank error:', e);
     return null;
   }
 }

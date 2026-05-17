@@ -259,7 +259,6 @@ export class BurrowManager {
         }
       });
       
-      console.log('✓ Minion model loaded');
     });
   }
 
@@ -421,7 +420,6 @@ export class BurrowManager {
 
   _destroyBurrow() {
     this.state = BURROW_STATE.DESTROYED;
-    console.log("Burrow Destroyed!");
     for (const egg of this.eggs) {
       this.burrowGroup.remove(egg.mesh);
     }

@@ -310,10 +310,8 @@ export class Beach {
   _loadAssets() {
     const loadingManager = new THREE.LoadingManager();
     loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
-      console.log(`Loading file: ${url}.\nLoaded ${itemsLoaded} of ${itemsTotal} files.`);
     };
     loadingManager.onError = (url) => {
-      console.error('There was an error loading ' + url);
     };
 
     const loader = new GLTFLoader(loadingManager);
@@ -345,7 +343,6 @@ export class Beach {
         this.components.mixers.push(mixer);
       }
 
-      console.log('Crab loaded successfully');
     });
 
     // Load Environment (Coconut Trees)
@@ -395,7 +392,6 @@ export class Beach {
         // Reduced the radius heavily so Crab can comfortably navigate between trees
         this.colliders.push({ x: x, z: z, radius: scale * 0.4 });
       }
-      console.log('Coconut Trees loaded successfully');
     });
   }
 

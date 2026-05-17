@@ -148,7 +148,6 @@ export class WeaponSystem {
     if (this._isRageMode) {
       this._preRageType = weaponType;
       this._preRageLevel = weaponLevel;
-      console.log(`🔫 Weapon upgraded during rage: ${weaponType} Lv.${weaponLevel}`);
       return;
     }
 
@@ -157,7 +156,6 @@ export class WeaponSystem {
     this._isCharging = false;
     this._chargeTimer = 0;
     this._buildGuns(this.getEffectiveStats());
-    console.log(`🔫 Weapon: ${weaponType} Lv.${weaponLevel}`);
   }
 
   _buildGunModel(s) {
@@ -515,7 +513,6 @@ export class WeaponSystem {
       this.muzzlePoints.push(new THREE.Vector3());
       this._muzzleFlashes.push(this._createMuzzleFlashModel());
     }
-    console.log('🔥 RAGE MODE: 4 guns active');
   }
 
   exitRageMode() {
@@ -524,7 +521,18 @@ export class WeaponSystem {
     this.currentType = this._preRageType || 'pistol';
     this.currentLevel = this._preRageLevel || 1;
     this._buildGuns(this.getEffectiveStats());
-    console.log('🔫 Rage ended, weapon restored');
+  }
+
+  /**
+   * Scale the rage guns proportionally during wind-down.
+   * @param {number} t — 0 = full rage size (2.5×), 1 = vanished (0×)
+   */
+  setRageGunScale(t) {
+    if (!this._isRageMode) return;
+    const scale = 2.5 * (1.0 - t); // 2.5× → 0×
+    for (const gun of this.gunMeshes) {
+      gun.scale.setScalar(Math.max(0.01, scale)); // never exactly 0 to avoid degenerate matrix
+    }
   }
 
   /**
