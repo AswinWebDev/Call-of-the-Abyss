@@ -304,9 +304,10 @@
     }
 
     /* ═══════════════════════════════════════════════════════════
-       Mobile / touch controls — hidden on desktop, shown on touch devices.
-       Body gets the `.touch-mode` class from main.js when touch is detected.
+       Mobile / touch controls
        ═══════════════════════════════════════════════════════════ */
+
+
     #mobile-controls {
       display: none;
     }
@@ -316,21 +317,14 @@
       position: fixed;
       inset: 0;
       z-index: 25;
-      /* under menus (50) but above HUD (10) */
       pointer-events: none;
-      /* children opt back in */
       touch-action: none;
-      /* prevent browser pan/zoom on game canvas */
-      /* Responsive edge inset — stays tight on small phones, shifts inward
-         on larger phones / tablets so thumbs don't stretch to the edges */
-      --edge-inset: clamp(32px, 5vw, 64px);
     }
 
     body.touch-mode #mobile-controls>* {
       pointer-events: auto;
     }
 
-    /* Hide the desktop crosshair on touch (we don't need it without a mouse) */
     body.touch-mode .crosshair {
       display: none;
     }
@@ -338,7 +332,8 @@
     /* Move joystick base — fixed bottom-left circle */
     #move-stick-base {
       position: absolute;
-      left: var(--edge-inset, 32px);
+      /* Base 15px + 10% of screen width = scales inward on large screens */
+      left: calc(15px + 10vw);
       bottom: 28px;
       width: 150px;
       height: 150px;
@@ -348,6 +343,7 @@
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 6px 16px rgba(0, 0, 0, 0.4);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
+      z-index: 2;
     }
 
     #move-stick-knob {
@@ -364,34 +360,9 @@
       pointer-events: none;
     }
 
-    /* Look pad — invisible FULL-SCREEN hit zone. Any swipe that doesn't
-       land on a button or the joystick base counts as a camera look. The
-       buttons sit on top via higher z-index and stop event propagation,
-       so they "claim" their own touches before this catch-all sees them.
-       This fixes the dead-zone problem where small phones had buttons
-       eating most of the right 60vw, leaving almost nothing to swipe in. */
-    #look-area {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      background: transparent;
-      z-index: 0;
-      /* under buttons & joystick (which default higher) */
-    }
-
-    /* Joystick & buttons must explicitly outrank look-area so touches on
-       them are claimed first */
-    #move-stick-base,
-    .touch-btn {
-      z-index: 2;
-    }
-
     /* Action buttons */
     .touch-btn {
       position: absolute;
-      width: 78px;
-      height: 78px;
       border-radius: 50%;
       border: 2px solid rgba(255, 255, 255, 0.22);
       background: rgba(8, 12, 22, 0.55);
@@ -408,6 +379,7 @@
       -webkit-tap-highlight-color: transparent;
       transition: transform 0.08s, background 0.12s;
       cursor: pointer;
+      z-index: 2;
     }
 
     .touch-btn.pressed {
@@ -415,8 +387,10 @@
       background: rgba(40, 60, 90, 0.65);
     }
 
-    .touch-btn-primary {
-      right: calc(var(--edge-inset, 32px) + 88px);
+    /* FIRE: Left side of the right cluster */
+    #btn-fire {
+      /* edge distance + Jump width + gap */
+      right: calc(15px + 10vw + 95px);
       bottom: 28px;
       width: 90px;
       height: 90px;
@@ -427,12 +401,13 @@
       box-shadow: 0 0 0 1px rgba(255, 220, 130, 0.25) inset, 0 8px 22px rgba(255, 80, 60, 0.45);
     }
 
-    .touch-btn-primary.pressed {
+    #btn-fire.pressed {
       background: rgba(255, 130, 80, 0.92);
     }
 
+    /* JUMP: Rightmost button */
     #btn-jump {
-      right: var(--edge-inset, 32px);
+      right: calc(15px + 10vw);
       bottom: 28px;
       width: 72px;
       height: 72px;
@@ -446,9 +421,9 @@
       justify-content: center;
     }
 
-    /* SAND BURST button — diamond shape with cooldown meter via conic-gradient */
-    .touch-btn-burst {
-      right: calc(var(--edge-inset, 32px) + 2px);
+    /* SAND BURST: On top of Jump */
+    #btn-burst {
+      right: calc(15px + 10vw + 2px);
       bottom: 120px;
       width: 68px;
       height: 68px;
@@ -1338,8 +1313,6 @@
       #move-stick-base {
         width: 120px;
         height: 120px;
-        left: 18px;
-        bottom: 18px;
       }
 
       #move-stick-knob {
@@ -1354,22 +1327,10 @@
         font-size: 11px;
       }
 
-      .touch-btn-primary {
+      #btn-fire {
         width: 78px;
         height: 78px;
-        right: 18px;
-        bottom: 18px;
         font-size: 13px;
-      }
-
-      #btn-jump {
-        right: 110px;
-        bottom: 36px;
-      }
-
-      .touch-btn-burst {
-        right: 36px;
-        bottom: 110px;
       }
     }
 
@@ -1393,8 +1354,6 @@
       #move-stick-base {
         width: 100px;
         height: 100px;
-        left: 12px;
-        bottom: 12px;
       }
 
       #move-stick-knob {
@@ -1689,9 +1648,10 @@
       pointer-events: all;
     }
 
-    .menu-overlay.hidden {
+    .menu-overlay.hidden,
+    .menu-overlay.hidden * {
       opacity: 0;
-      pointer-events: none;
+      pointer-events: none !important;
     }
 
     .menu-content {
@@ -3127,7 +3087,7 @@
     <div id="move-stick-base">
       <div id="move-stick-knob"></div>
     </div>
-    <div id="look-area"></div>
+
     <button id="btn-fire" class="touch-btn touch-btn-primary" aria-label="Fire">FIRE</button>
     <button id="btn-jump" class="touch-btn" aria-label="Jump">▲</button>
     <button id="btn-burst" class="touch-btn touch-btn-burst" aria-label="Sand Burst"><span>BURST</span></button>

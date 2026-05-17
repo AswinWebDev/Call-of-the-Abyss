@@ -323,7 +323,7 @@
       /* prevent browser pan/zoom on game canvas */
       /* Responsive edge inset — stays tight on small phones, shifts inward
          on larger phones / tablets so thumbs don't stretch to the edges */
-      --edge-inset: clamp(32px, 5vw, 64px);
+      --edge-inset: clamp(32px, 8vw, 100px);
     }
 
     body.touch-mode #mobile-controls>* {
@@ -364,24 +364,9 @@
       pointer-events: none;
     }
 
-    /* Look pad — invisible FULL-SCREEN hit zone. Any swipe that doesn't
-       land on a button or the joystick base counts as a camera look. The
-       buttons sit on top via higher z-index and stop event propagation,
-       so they "claim" their own touches before this catch-all sees them.
-       This fixes the dead-zone problem where small phones had buttons
-       eating most of the right 60vw, leaving almost nothing to swipe in. */
-    #look-area {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      background: transparent;
-      z-index: 0;
-      /* under buttons & joystick (which default higher) */
-    }
-
-    /* Joystick & buttons must explicitly outrank look-area so touches on
-       them are claimed first */
+    /* Joystick & buttons get explicit z-index so they sit above the
+       game canvas. Look-handling is now at document level in
+       TouchControls.js — no #look-area div needed. */
     #move-stick-base,
     .touch-btn {
       z-index: 2;
@@ -3112,7 +3097,7 @@
       }
     }
   </style>
-  <script type="module" crossorigin src="./assets/index-D48Bp4pc.js"></script>
+  <script type="module" crossorigin src="./assets/index-BAbJAv4j.js"></script>
 </head>
 
 <body>
@@ -3128,7 +3113,7 @@
     <div id="move-stick-base">
       <div id="move-stick-knob"></div>
     </div>
-    <div id="look-area"></div>
+
     <button id="btn-fire" class="touch-btn touch-btn-primary" aria-label="Fire">FIRE</button>
     <button id="btn-jump" class="touch-btn" aria-label="Jump">▲</button>
     <button id="btn-burst" class="touch-btn touch-btn-burst" aria-label="Sand Burst"><span>BURST</span></button>

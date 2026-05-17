@@ -3,6 +3,10 @@
  */
 import * as THREE from 'three';
 
+// Module-level scratch vectors — reused every frame to avoid GC pressure
+const _lookTarget = new THREE.Vector3();
+const _direction = new THREE.Vector3();
+
 export class Camera {
   constructor(threeCamera, input) {
     this.camera = threeCamera;
@@ -71,16 +75,16 @@ export class Camera {
     this.targetPos.set(idealX, idealY, idealZ);
 
     // Collision check — cast ray from target to ideal camera position
-    const lookTarget = new THREE.Vector3(
+    _lookTarget.set(
       targetWorldPos.x,
       targetWorldPos.y + this.heightOffset,
       targetWorldPos.z
     );
 
-    const direction = new THREE.Vector3().subVectors(this.targetPos, lookTarget).normalize();
-    const maxDist = this.targetPos.distanceTo(lookTarget);
+    _direction.subVectors(this.targetPos, _lookTarget).normalize();
+    const maxDist = this.targetPos.distanceTo(_lookTarget);
 
-    this.raycaster.set(lookTarget, direction);
+    this.raycaster.set(_lookTarget, _direction);
     this.raycaster.far = maxDist;
     this.raycaster.near = 0.1;
 
@@ -90,7 +94,7 @@ export class Camera {
         // Move camera in front of the obstacle
         const safeDistance = Math.max(this.minDistance, hits[0].distance - 1.0);
         const ratio = safeDistance / maxDist;
-        this.targetPos.lerpVectors(lookTarget, this.targetPos, ratio);
+        this.targetPos.lerpVectors(_lookTarget, this.targetPos, ratio);
       }
     }
 
@@ -108,6 +112,6 @@ export class Camera {
 
     // Apply
     this.camera.position.copy(this.currentPos);
-    this.camera.lookAt(lookTarget);
+    this.camera.lookAt(_lookTarget);
   }
 }
