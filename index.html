@@ -2948,7 +2948,7 @@
         padding: 12px 16px;
         gap: 10px;
         max-width: 96vw;
-        max-height: 94vh;
+        max-height: 96%;
         overflow-y: auto;
         /* fall-back scroll if still too tall */
       }
@@ -3010,48 +3010,66 @@
       }
     }
 
-    /* Very short heights — squeeze even harder (column count still from
-       the .shop-grid width-based rules) */
-    @media (max-height: 440px) {
+    /* Very short heights (Landscape Phones) — force 5 columns to fit in 2 rows */
+    @media (max-height: 500px) and (orientation: landscape) {
       .shop-panel {
-        padding: 8px 12px;
-        gap: 7px;
+        padding: 6px 10px;
+        gap: 4px;
+        max-height: 98%;
+        overflow: hidden !important; /* Never scroll in this tight view */
       }
 
       .shop-title {
-        font-size: 15px;
+        font-size: 14px;
+        margin: 0;
       }
 
       .shop-coins {
-        font-size: 14px;
+        font-size: 13px;
+        margin: 0;
       }
 
       .shop-grid {
-        gap: 5px;
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+        gap: 4px;
       }
 
       .shop-card {
-        min-height: 96px;
-        padding: 6px 4px;
+        min-height: 0;
+        padding: 4px 2px;
       }
 
       .shop-icon {
-        font-size: 16px;
+        font-size: 14px;
         margin-bottom: 2px;
       }
 
       .shop-card-title {
-        font-size: 10px;
+        font-size: 9px;
+        letter-spacing: 0;
+        margin-bottom: 1px;
+      }
+      
+      .shop-level {
+        font-size: 8px;
+        margin-bottom: 1px;
       }
 
       .shop-desc {
+        font-size: 8px;
+        margin-bottom: 2px;
+        line-height: 1.1;
+      }
+      
+      .shop-cost {
         font-size: 9px;
-        margin-bottom: 4px;
+        padding: 3px 6px;
       }
 
       .shop-done-btn {
-        padding: 7px 22px;
-        font-size: 13px;
+        padding: 5px 16px;
+        font-size: 12px;
+        margin-top: 2px;
       }
     }
 
