@@ -244,7 +244,7 @@ export class BurrowManager {
       const box = new THREE.Box3().setFromObject(this.minionModel);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 2.0 / maxDim; // Player is ~4.0, minion is 2.0
+      const scale = 4.0 / maxDim; // Player is ~4.0, minion now matches
       this.minionModel.scale.setScalar(scale);
 
       // Tint minions slightly red/orange to distinguish from player
@@ -299,7 +299,7 @@ export class BurrowManager {
     
     // Position egg randomly inside the rock circle, elevated so it doesn't clip
     const angle = Math.random() * Math.PI * 2;
-    const r = Math.random() * 1.5;
+    const r = 26.0 + Math.random() * 6.0;
     eggMesh.position.set(Math.cos(angle) * r, 1.2, Math.sin(angle) * r);
     eggMesh.castShadow = true;
     
@@ -580,8 +580,8 @@ export class BurrowManager {
 
           // Minions are LEASHED to the burrow — they only consider enemies
           // within their leash radius and never wander past the boundary.
-          const leashRadius = 28.0;
-          const detectionRadius = 25.0;
+          const leashRadius = 40.0;
+          const detectionRadius = 38.0;
           let closestDist = detectionRadius;
           let closestEnemy = null;
 
@@ -606,7 +606,7 @@ export class BurrowManager {
           } else {
             // Idle patrol around burrow
             m.timer += dt;
-            const patrolRadius = 8.0;
+            const patrolRadius = 32.0;
             const px = this.position.x + Math.cos(m.timer * 0.5 + i) * patrolRadius;
             const pz = this.position.z + Math.sin(m.timer * 0.5 + i) * patrolRadius;
 
@@ -625,7 +625,7 @@ export class BurrowManager {
 
         case MINION_STATE.ATTACK:
           // Drop the target if it's dead OR has wandered outside the leash
-          const _leashR = 28.0;
+          const _leashR = 40.0;
           if (!m.target || m.target.state === 'dead' || m.target.state === 'dying') {
             m.target = null;
             m.state = MINION_STATE.PATROL;
@@ -674,7 +674,7 @@ export class BurrowManager {
       // ── Hard leash clamp — applied AFTER state movement so minions can
       //    never end up outside the radius regardless of state. If they
       //    would, project them back to the boundary.
-      const _BURROW_LEASH_RADIUS = 28.0;
+      const _BURROW_LEASH_RADIUS = 40.0;
       const _dxB = m.model.position.x - this.position.x;
       const _dzB = m.model.position.z - this.position.z;
       const _dB = Math.sqrt(_dxB * _dxB + _dzB * _dzB);
